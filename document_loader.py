@@ -1,9 +1,18 @@
 import fitz  # PyMuPDF
-from langchain_core.documents import Document
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 import re
 from unstructured.partition.pdf import partition_pdf
 from unstructured.documents.elements import Table
+
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+# Embeddings
+from langchain.embeddings import Embeddings # Base class for embeddings, not used directly but required for type hints
+from langchain_huggingface.embeddings import HuggingFaceEmbeddings, HuggingFaceEndpointEmbeddings
+from langchain_openai.embeddings import OpenAIEmbeddings, AzureOpenAIEmbeddings
+# Vector Stores
+from langchain_core.vectorstores import VectorStore # Base class for vector stores, not used directly but required for type hints
+from langchain_community.vectorstores import Chroma, Weaviate, Qdrant, Pinecone, Redis, FAISS
+
 
 SECTION_PATTERNS = [
     r"^\s*\d+\s+(Abstract|Introduction|Related Works?|Methodology|Results?|Discussion|Conclusion|References)\s*$",
@@ -139,10 +148,9 @@ def make_langchain_docs(sections: list[Document], splitter = SectionAwareSplitte
 def extract_tables(file_path: str) -> list[Document]:
     elements = partition_pdf(
         filename=file_path,
-        strategy="fast",              # 👈 key change
-        infer_table_structure=True,   # still OK
+        strategy="fast",
+        infer_table_structure=True,
     )
-
 
     table_docs = []
 
@@ -161,10 +169,12 @@ def extract_tables(file_path: str) -> list[Document]:
 
     return table_docs
 
-
 def load_and_process_pdf(file_path: str) -> list[Document]:
     sections = load_pdf_sections_structured(file_path)
     table_docs = extract_tables(file_path)
     langchain_docs = make_langchain_docs(sections)
 
     return langchain_docs + table_docs
+
+def create_vector_store(docs: list[Document], embedding_model: Embeddings, vectorstore_cls: VectorStore = Chroma, **vectorstore_kwargs) -> VectorStore:
+    return vectorstore_cls.from_documents(docs, embedding_model, **vectorstore_kwargs)
