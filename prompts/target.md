@@ -9,20 +9,12 @@ Extract:
 - Physical form (e.g., foil, powder, solution, pellet)
 - Section or heading where this appears
 
-If multiple target materials are mentioned, return an array.
+IMPORTANT: Return ONLY valid JSON with no additional text, explanation, or comments. The response must be parseable as JSON.
 
-Output JSON matching this schema:
-
-```json
 {
-  "target_materials": [
-    {
-      "name": "string | null",
-      "chemical_formula": "string | null",
-      "isotope": "string | null",
-      "physical_form": "string | null",
-      "source_section": "string | null"
-    }
-  ]
-}
-``` 
+  "name": "string | null",
+  "chemical_formula": "string | null",
+  "isotope": "string | null",
+  "physical_form": "string | null",
+  "source_section": "string | null"
+} 

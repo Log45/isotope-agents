@@ -1,0 +1,46 @@
+{
+  "paper_metadata": {
+    "title": "rdio0592.indd",
+    "doi": "10.1134/S1066362220050057",
+    "source": "./papers/S1066362220050057.pdf"
+  },
+  "target_materials": {
+    "name": "thorium nitrate",
+    "chemical_formula": "Th(NO3)4",
+    "isotope": "228Ac",
+    "physical_form": "solid",
+    "source_section": "Development of a procedure for separation of radiochemically pure 228Ac from natural thorium."
+  },
+  "acids_and_solvents": {
+    "name": "HNO3",
+    "type": "acid",
+    "concentration": "0.2 M",
+    "role": "conditioning",
+    "source_section": "RADIOCHEMISTRY  Vol.  62  No.  5  2020"
+  },
+  "resins_or_columns": {
+    "name": "RE resin sorbent",
+    "material": "based on carbamoylmethylphosphine oxide and tributyl phosphate",
+    "mesh_size": null,
+    "column_dimensions": "2 mL",
+    "role": "extraction chromatography for separation of 228Ac and 228Ra",
+    "source_section": "GENERATOR  OF  ACTINIUM-228"
+  },
+  "elution_conditions": {
+    "eluent": "HNO3",
+    "concentration": "0.2 M",
+    "volume": "2–5 mL fractions for 228Ra; 13–16 mL fractions for 228Ac",
+    "flow_rate": "1 mL/min",
+    "temperature": null,
+    "pH": null,
+    "source_section": "RADIOCHEMISTRY"
+  },
+  "final_products": {
+    "name": "228Ac",
+    "isotope": "228Ac",
+    "chemical_form": "radioisotope",
+    "purity": "radiochemically pure",
+    "yield_": null,
+    "source_section": "Development of a procedure for separation of radiochemically pure 228Ac from natural thorium."
+  }
+}

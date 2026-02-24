@@ -10,20 +10,13 @@ For each resin or column, extract:
 - Functional role in the process
 - Section or heading where it appears
 
-If multiple resins or columns are mentioned, return an array.
+IMPORTANT: Return ONLY valid JSON with no additional text, explanation, or comments. The response must be parseable as JSON.
 
-Output JSON matching this schema:
-```json
 {
-  "resins_or_columns": [
-    {
-      "name": "string | null",
-      "material": "string | null",
-      "mesh_size": "string | null",
-      "column_dimensions": "string | null",
-      "role": "string | null",
-      "source_section": "string | null"
-    }
-  ]
+  "name": "string | null",
+  "material": "string | null",
+  "mesh_size": "string | null",
+  "column_dimensions": "string | null",
+  "role": "string | null",
+  "source_section": "string | null"
 }
-```

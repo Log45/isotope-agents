@@ -1,0 +1,46 @@
+{
+  "paper_metadata": {
+    "title": "string",
+    "doi": "string",
+    "source": "string"
+  },
+  "target_materials": {
+    "name": "string",
+    "chemical_formula": "string",
+    "isotope": "string",
+    "physical_form": "string",
+    "source_section": "string"
+  },
+  "acids_and_solvents": {
+    "name": "string",
+    "type": "acid | solvent | base",
+    "concentration": "string",
+    "role": "dissolution | wash | elution | conditioning",
+    "source_section": "string"
+  },
+  "resins_or_columns": {
+    "name": "string",
+    "material": "string",
+    "mesh_size": "string",
+    "column_dimensions": "string",
+    "role": "string",
+    "source_section": "string"
+  },
+  "elution_conditions": {
+    "eluent": "string",
+    "concentration": "string",
+    "volume": "string",
+    "flow_rate": "string",
+    "temperature": "string",
+    "pH": "string",
+    "source_section": "string"
+  },
+  "final_products": {
+    "name": "string",
+    "isotope": "string",
+    "chemical_form": "string",
+    "purity": "string",
+    "yield": "string",
+    "source_section": "string"
+  }
+}

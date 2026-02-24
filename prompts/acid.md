@@ -13,19 +13,12 @@ For each chemical, extract:
 - Role in the process
 - Section or heading where it appears
 
-If multiple chemicals are mentioned, return an array.
+IMPORTANT: Return ONLY valid JSON with no additional text, explanation, or comments. The response must be parseable as JSON.
 
-Output JSON matching this schema:
-```json
 {
-  "acids_and_solvents": [
-    {
-      "name": "string | null",
-      "type": "acid | solvent | base | null",
-      "concentration": "string | null",
-      "role": "dissolution | wash | elution | conditioning | null",
-      "source_section": "string | null"
-    }
-  ]
+  "name": "string | null",
+  "type": "acid | solvent | base | null",
+  "concentration": "string | null",
+  "role": "dissolution | wash | elution | conditioning | null",
+  "source_section": "string | null"
 }
-```

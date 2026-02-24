@@ -4,8 +4,23 @@ from langchain_core.documents import Document
 from langchain.agents import create_agent
 from pydantic import BaseModel
 
-with open("prompts/system.md", "r", encoding="utf-8") as f:
+with open("./prompts/system.md", "r", encoding="utf-8") as f:
     SYSTEM_PROMPT = f.read()
+
+with open("./prompts/target.md", "r", encoding="utf-8") as f:
+    TARGET_MATERIAL_PROMPT = f.read()
+    
+with open("./prompts/acid.md", "r", encoding="utf-8") as f:
+    ACID_PROMPT = f.read()
+
+with open("./prompts/resin.md", "r", encoding="utf-8") as f:
+    RESIN_PROMPT = f.read()
+    
+with open("./prompts/elution.md", "r", encoding="utf-8") as f:
+    ELUTION_PROMPT = f.read()
+    
+with open("./prompts/products.md", "r", encoding="utf-8") as f:
+    FINAL_PRODUCT_PROMPT = f.read()
 
 class State(AgentState):
     context: list[Document]

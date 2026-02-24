@@ -10,20 +10,13 @@ For each final product, extract:
 - Reported yield
 - Section or heading where this appears
 
-If multiple final products are mentioned, return an array.
+IMPORTANT: Return ONLY valid JSON with no additional text, explanation, or comments. The response must be parseable as JSON.
 
-Output JSON matching this schema:
-```json
 {
-  "final_products": [
-    {
-      "name": "string | null",
-      "isotope": "string | null",
-      "chemical_form": "string | null",
-      "purity": "string | null",
-      "yield": "string | null",
-      "source_section": "string | null"
-    }
-  ]
+  "name": "string | null",
+  "isotope": "string | null",
+  "chemical_form": "string | null",
+  "purity": "string | null",
+  "yield": "string | null",
+  "source_section": "string | null"
 }
-```

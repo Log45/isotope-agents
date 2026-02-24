@@ -11,7 +11,7 @@ from langchain_huggingface.embeddings import HuggingFaceEmbeddings, HuggingFaceE
 from langchain_openai.embeddings import OpenAIEmbeddings, AzureOpenAIEmbeddings
 # Vector Stores
 from langchain_core.vectorstores import VectorStore # Base class for vector stores, not used directly but required for type hints
-from langchain_community.vectorstores import Chroma, Weaviate, Qdrant, Pinecone, Redis, FAISS
+from langchain_community.vectorstores import Chroma, Weaviate, Qdrant, Redis, FAISS
 
 
 SECTION_PATTERNS = [
@@ -133,6 +133,8 @@ def make_langchain_docs(sections: list[Document], splitter = SectionAwareSplitte
         chunks = splitter.split_text(text)
 
         for c in chunks:
+            if len(c.split()) <= 1:
+                continue
             result_docs.append(Document(
                 page_content=c,
                 metadata={
@@ -168,6 +170,29 @@ def extract_tables(file_path: str) -> list[Document]:
             )
 
     return table_docs
+
+def extract_paper_metadata(file_path: str) -> dict:
+    """Extract title, DOI, and source from PDF without LLM calls."""
+    doc = fitz.open(file_path)
+    metadata = doc.metadata or {}
+    
+    # Extract DOI from first few pages
+    doi_pattern = r'10\.\d{4,}/\S+'
+    doi = ""
+    for page_num in range(min(3, doc.page_count)):
+        text = doc[page_num].get_text()
+        match = re.search(doi_pattern, text)
+        if match:
+            doi = match.group(0)
+            break
+    
+    doc.close()
+    
+    return {
+        "title": metadata.get("title", ""),
+        "doi": doi,
+        "source": file_path
+    }
 
 def load_and_process_pdf(file_path: str) -> list[Document]:
     sections = load_pdf_sections_structured(file_path)

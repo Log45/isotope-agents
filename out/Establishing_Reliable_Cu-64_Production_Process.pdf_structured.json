@@ -1,0 +1,46 @@
+{
+  "paper_metadata": {
+    "title": "Establishing Reliable Cu-64 Production Process: From Target Plating to Molecular Specific Tumor Micro-PET Imaging",
+    "doi": "10.3390/molecules22040641",
+    "source": "./papers/Establishing_Reliable_Cu-64_Production_Process.pdf"
+  },
+  "target_materials": {
+    "name": "nickel",
+    "chemical_formula": "Ni",
+    "isotope": "64Cu",
+    "physical_form": "solid target",
+    "source_section": "After irradiation of 5 h"
+  },
+  "acids_and_solvents": {
+    "name": null,
+    "type": null,
+    "concentration": null,
+    "role": null,
+    "source_section": null
+  },
+  "resins_or_columns": {
+    "name": "PD-10 desalting columns",
+    "material": "null",
+    "mesh_size": "null",
+    "column_dimensions": "null",
+    "role": "purification",
+    "source_section": "null"
+  },
+  "elution_conditions": {
+    "eluent": "1 M HCl",
+    "concentration": "1 M",
+    "volume": null,
+    "flow_rate": null,
+    "temperature": null,
+    "pH": null,
+    "source_section": "Extract"
+  },
+  "final_products": {
+    "name": "64CuCl2 solution",
+    "isotope": "64Cu",
+    "chemical_form": "solution",
+    "purity": "not specified",
+    "yield_": "not specified",
+    "source_section": "Final products"
+  }
+}
