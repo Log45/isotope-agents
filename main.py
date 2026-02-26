@@ -5,10 +5,32 @@ from langchain.messages import HumanMessage
 from agents import RAGPipeline, TARGET_MATERIAL_PROMPT, ACID_PROMPT, RESIN_PROMPT, ELUTION_PROMPT, FINAL_PRODUCT_PROMPT
 from dotenv import load_dotenv
 from models import PaperMetadata, TargetMaterial, AcidOrSolvent, ResinOrColumn, ElutionCondition, FinalProduct, IsotopeProcessFormat
+from huggingface_hub import login
 import os
 import json
+import gc
+import torch
+import traceback
 
 load_dotenv()
+
+
+def _agent_response_to_json_serializable(obj):
+    """Convert agent response (may contain HumanMessage, AIMessage, etc.) to JSON-serializable form."""
+    if isinstance(obj, (str, int, float, bool, type(None))):
+        return obj
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump()
+    if isinstance(obj, dict):
+        return {k: _agent_response_to_json_serializable(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_agent_response_to_json_serializable(i) for i in obj]
+    return obj
+
+
+hf_token = os.environ.get("HUGGINGFACEHUB_API_TOKEN", None)
+if hf_token:
+    login(hf_token)
 
 def test_document_loader():
     for file in os.listdir("./papers"):
@@ -22,7 +44,7 @@ def test_document_loader():
         with open(f"./out/{file}.txt", "w", encoding="utf-8") as f:        
             f.write(out_string)
 
-def extract_isotope_process_info(file_path: str, model="gpt-4o-mini-2024-07-18") -> IsotopeProcessFormat | None:
+def extract_isotope_process_info(file_path: str, model="gpt-4o-mini-2024-07-18", provider=None, logging=False) -> IsotopeProcessFormat | None:
     try:
         docs = load_and_process_pdf(file_path)
         embedding_model = OpenAIEmbeddings()
@@ -31,49 +53,103 @@ def extract_isotope_process_info(file_path: str, model="gpt-4o-mini-2024-07-18")
         
         paper_metadata = PaperMetadata(**extract_paper_metadata(file_path))
         
+        if logging:
+            log_path = f"./log/{os.path.basename(file_path)}.log"
+            with open(log_path, "w", encoding="utf-8") as log_file:
+                log_file.write(f"Processing file: {file_path}\n")
+                log_file.write(f"Extracted Paper Metadata:\n{paper_metadata.model_dump_json(indent=2)}\n\n")
+        
         # Extract Target Material Information
         try:
-            target_agent = rag_pipeline.create_agent(model=model, response_format=TargetMaterial)
+            target_agent = rag_pipeline.create_agent(model=model, provider=provider, response_format=TargetMaterial)
             target_agent_response = target_agent.invoke({"messages": [HumanMessage(TARGET_MATERIAL_PROMPT)]})
+            if logging:
+                print("logging target material response")
+                with open(log_path, "a", encoding="utf-8") as log_file:
+                    log_file.write("Target Material Agent Response:\n")
+                    log_file.write(json.dumps(_agent_response_to_json_serializable(target_agent_response), indent=2) + "\n\n")
             target_material = target_agent_response['structured_response']
         except Exception as e:
             print(f"  Warning: Failed to extract target material: {e}")
+            traceback.print_exc()
             target_material = TargetMaterial()
+        
+        # Clean up target agent and free memory before creating new agents 
+        del target_agent
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         
         # Extract Acid or Solvent Information
         try:
-            acid_agent = rag_pipeline.create_agent(model=model, response_format=AcidOrSolvent)
+            acid_agent = rag_pipeline.create_agent(model=model, provider=provider, response_format=AcidOrSolvent)
             acid_agent_response = acid_agent.invoke({"messages": [HumanMessage(ACID_PROMPT)]})
+            if logging:
+                with open(log_path, "a", encoding="utf-8") as log_file:
+                    log_file.write("Acid/Solvent Agent Response:\n")
+                    log_file.write(json.dumps(_agent_response_to_json_serializable(acid_agent_response), indent=2) + "\n\n")
             acid_or_solvent = acid_agent_response['structured_response']
         except Exception as e:
             print(f"  Warning: Failed to extract acid/solvent: {e}")
+            traceback.print_exc()
             acid_or_solvent = AcidOrSolvent()
+            
+        # Clean up acid agent and free memory before creating new agents
+        del acid_agent
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         
         # Extract Resin or Column Information
         try:
-            resin_agent = rag_pipeline.create_agent(model=model, response_format=ResinOrColumn)
+            resin_agent = rag_pipeline.create_agent(model=model, provider=provider, response_format=ResinOrColumn)
             resin_agent_response = resin_agent.invoke({"messages": [HumanMessage(RESIN_PROMPT)]})
+            if logging:
+                with open(log_path, "a", encoding="utf-8") as log_file:
+                    log_file.write("Resin/Column Agent Response:\n")
+                    log_file.write(json.dumps(_agent_response_to_json_serializable(resin_agent_response), indent=2) + "\n\n")
             resin_or_column = resin_agent_response['structured_response']
         except Exception as e:
             print(f"  Warning: Failed to extract resin/column: {e}")
+            traceback.print_exc()
             resin_or_column = ResinOrColumn()
+            
+        del resin_agent
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         
         # Extract Elution Condition Information
         try:
-            elution_agent = rag_pipeline.create_agent(model=model, response_format=ElutionCondition)
+            elution_agent = rag_pipeline.create_agent(model=model, provider=provider, response_format=ElutionCondition)
             elution_agent_response = elution_agent.invoke({"messages": [HumanMessage(ELUTION_PROMPT)]})
+            if logging:
+                with open(log_path, "a", encoding="utf-8") as log_file:
+                    log_file.write("Elution Condition Agent Response:\n")
+                    log_file.write(json.dumps(_agent_response_to_json_serializable(elution_agent_response), indent=2) + "\n\n")
             elution_condition = elution_agent_response['structured_response']
         except Exception as e:
             print(f"  Warning: Failed to extract elution conditions: {e}")
+            traceback.print_exc()
             elution_condition = ElutionCondition()
+            
+        del elution_agent
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         
         # Extract Final Product Information
         try:
-            final_product_agent = rag_pipeline.create_agent(model=model, response_format=FinalProduct)
+            final_product_agent = rag_pipeline.create_agent(model=model, provider=provider, response_format=FinalProduct)
             final_product_agent_response = final_product_agent.invoke({"messages": [HumanMessage(FINAL_PRODUCT_PROMPT)]})
+            if logging:
+                with open(log_path, "a", encoding="utf-8") as log_file:
+                    log_file.write("Final Product Agent Response:\n")
+                    log_file.write(json.dumps(_agent_response_to_json_serializable(final_product_agent_response), indent=2) + "\n\n")
             final_product = final_product_agent_response['structured_response']
         except Exception as e:
             print(f"  Warning: Failed to extract final product: {e}")
+            traceback.print_exc()
             final_product = FinalProduct()
         
         # Clean up vector store after processing so only one paper is in memory at a time
@@ -84,8 +160,13 @@ def extract_isotope_process_info(file_path: str, model="gpt-4o-mini-2024-07-18")
                 vector_store.delete(ids=all_docs['ids'])
         except Exception as e:
             print(f"  Warning: Failed to clean up vector store: {e}")
+            traceback.print_exc()
         
+        del final_product_agent
         del docs
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         
         return IsotopeProcessFormat(
             paper_metadata=paper_metadata,
@@ -97,6 +178,7 @@ def extract_isotope_process_info(file_path: str, model="gpt-4o-mini-2024-07-18")
         )
     except Exception as e:
         print(f"  Error processing file: {e}")
+        traceback.print_exc()
         try:
             # Clean up on error too
             all_docs = vector_store._collection.get()
@@ -104,6 +186,9 @@ def extract_isotope_process_info(file_path: str, model="gpt-4o-mini-2024-07-18")
                 vector_store.delete(ids=all_docs['ids'])
         except Exception as cleanup_error:
             print(f"  Warning: Failed to clean up vector store after error: {cleanup_error}")
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         return None
     
     
@@ -111,7 +196,7 @@ def extract_isotope_process_info(file_path: str, model="gpt-4o-mini-2024-07-18")
 if __name__ == "__main__":
     for file in os.listdir("./papers"):
         print(f"Processing file: {file}")
-        result = extract_isotope_process_info(f"./papers/{file}")
+        result = extract_isotope_process_info(f"./papers/{file}", logging=True)
         if result:
             print(f"Extraction Complete for {file}")
             with open(f"./out/{file}_structured.json", "w", encoding="utf-8") as f:
