@@ -1,8 +1,10 @@
+from io import TextIOWrapper
+
 from document_loader import load_and_process_pdf, create_vector_store, extract_paper_metadata
 from langchain_community.vectorstores import Chroma
 from langchain_openai.embeddings import OpenAIEmbeddings
 from langchain.messages import HumanMessage
-from agents import RAGPipeline, TARGET_MATERIAL_PROMPT, ACID_PROMPT, RESIN_PROMPT, ELUTION_PROMPT, FINAL_PRODUCT_PROMPT
+from agents import RAGPipeline, TARGET_MATERIAL_PROMPT, ACID_PROMPT, RESIN_PROMPT, ELUTION_PROMPT, FINAL_PRODUCT_PROMPT, SYSTEM_PROMPT
 from dotenv import load_dotenv
 from models import PaperMetadata, TargetMaterial, AcidOrSolvent, ResinOrColumn, ElutionCondition, FinalProduct, IsotopeProcessFormat
 from huggingface_hub import login
@@ -11,6 +13,8 @@ import json
 import gc
 import torch
 import traceback
+from pathlib import Path
+import sys
 
 load_dotenv()
 
@@ -190,16 +194,66 @@ def extract_isotope_process_info(file_path: str, model="gpt-4o-mini-2024-07-18",
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         return None
-    
+
+def get_save_folder(root: str = "out") -> str:
+    root_path = Path(root)
+    root_path.mkdir(exist_ok=True)
+
+    # find existing experiment folders
+    exp_dirs = [d for d in root_path.iterdir() if d.is_dir() and d.name.startswith("exp")]
+
+    if not exp_dirs:
+        exp_name = "exp"
+    else:
+        nums = []
+        for d in exp_dirs:
+            suffix = d.name.replace("exp", "")
+            nums.append(int(suffix) if suffix.isdigit() else 1)
+
+        exp_name = f"exp{max(nums) + 1}"
+
+    exp_path = root_path / exp_name
+    exp_path.mkdir(exist_ok=True)
+
+    return str(exp_path)
+
+def set_log_path(exp_path: str) -> TextIOWrapper:
+    log_file = open(f"{exp_path}/log", "w")
+    sys.stdout = log_file
+    sys.stderr = log_file
+    return log_file
+
+def close_log_file(log_file: TextIOWrapper) -> None:
+    log_file.close()
+    sys.stderr = sys.__stderr__
+    sys.stdout = sys.__stdout__
     
 
 if __name__ == "__main__":
+    exp_dir = get_save_folder()
+    log_file = set_log_path(exp_dir)
+    # save prompts to experiment folder
+    os.mkdir(f"{exp_dir}/prompts")
+    with open(f"{exp_dir}/prompts/target.md", "w") as f:
+        f.write(TARGET_MATERIAL_PROMPT)
+    with open(f"{exp_dir}/prompts/acid.md", "w") as f:
+        f.write(ACID_PROMPT)
+    with open(f"{exp_dir}/prompts/elution.md", "w") as f:
+        f.write(ELUTION_PROMPT)
+    with open(f"{exp_dir}/prompts/products.md", "w") as f:
+        f.write(FINAL_PRODUCT_PROMPT)
+    with open(f"{exp_dir}/prompts/resin.md", "w") as f:
+        f.write(RESIN_PROMPT)
+    with open(f"{exp_dir}/prompts/system.md", "w") as f:
+        f.write(SYSTEM_PROMPT)
+    
     for file in os.listdir("./papers"):
         print(f"Processing file: {file}")
         result = extract_isotope_process_info(f"./papers/{file}", logging=True)
         if result:
             print(f"Extraction Complete for {file}")
-            with open(f"./out/{file}_structured.json", "w", encoding="utf-8") as f:
+            with open(f"{exp_dir}/{file}.json", "w", encoding="utf-8") as f:
                 f.write(result.model_dump_json(indent=2))
         else:
             print(f"Failed to extract from {file}")
+    close_log_file(log_file)

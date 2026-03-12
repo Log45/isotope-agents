@@ -10,6 +10,8 @@ Extract:
 - Section or heading where this appears
 
 IMPORTANT: Return ONLY valid JSON with no additional text, explanation, or comments. The response must be parseable as JSON.
+IMPORTANT: The name of the target should match the chemical formula and the isotope. Each JSON response must coincide with a single initial target material.
+You must not return the product isotope in this section, just the initial material. 
 
 {
   "name": "string | null",
