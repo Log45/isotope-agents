@@ -1,0 +1,19 @@
+provider: huggingface
+model: google/gemma-2-9b-it
+params:
+  backend: pipeline
+  task: text-generation
+  device_map: auto
+
+  # Generation
+  max_new_tokens: 1024
+  temperature: 0
+
+  # Model loading (4-bit bitsandbytes)
+  model_kwargs:
+    quantization_config:
+      load_in_4bit: true
+      bnb_4bit_quant_type: nf4
+      bnb_4bit_compute_dtype: bfloat16
+      bnb_4bit_use_double_quant: true
+

@@ -15,6 +15,8 @@ from langchain_openai import ChatOpenAI
 from langchain_huggingface import ChatHuggingFace
 # Add more providers as needed
 
+from model_config import ModelConfig
+
 # TODO: Add quantization support to experiment with larger models
 """
 From langchain docs:
@@ -214,7 +216,6 @@ class RetrieveDocumentsMiddleware(AgentMiddleware[State]):
             # Use the same id as the query so add_messages *replaces* it instead of appending.
             # Otherwise we get [user, user], breaking HuggingFace's "roles must alternate user/assistant" rule.
             query_id = query.get("id") if isinstance(query, dict) else getattr(query, "id", None)
-            print(state["messages"])
             return {
                 "messages": state["messages"][:-1] + [HumanMessage(content=augmented_message_content, id=query_id)],
                 "context": retrieved_docs,
@@ -225,16 +226,36 @@ class RAGPipeline:
         self.vector_store = vector_store
         self.retrieve_middleware = RetrieveDocumentsMiddleware(vector_store=self.vector_store)
 
-    def create_agent(self, model, provider=None, response_format: BaseModel = None):
-        """Create an agent with the RAG middleware."""
+    def create_agent(
+        self,
+        model: str | None = None,
+        provider: str | None = None,
+        response_format: BaseModel = None,
+        config: ModelConfig | None = None,
+    ):
+        """Create an agent with the RAG middleware.
+
+        Preferred usage is to pass `config` (loaded from YAML via `load_model_config`).
+        """
+        if config is not None:
+            provider = config.provider
+            model = config.model
+            model_params = dict(config.params or {})
+        else:
+            model_params = {}
+
         if provider:
-            # Use max_new_tokens for HuggingFace to avoid conflict with pipeline's max_length
-            model_kwargs = {"max_new_tokens": 1024} if provider == "huggingface" else {"max_tokens": 1024}
-            model = init_chat_model(model, model_provider=provider, **model_kwargs)
+            # Backwards compatible defaults if caller didn't pass any params
+            if not model_params:
+                model_params = {"max_new_tokens": 1024} if provider == "huggingface" else {"max_tokens": 1024}
+
+            model_obj = init_chat_model(model, model_provider=provider, **model_params)
             if provider == "huggingface":
-                model = HuggingFaceMessageNormalizer(inner=model)
+                model_obj = HuggingFaceMessageNormalizer(inner=model_obj)
+        else:
+            model_obj = model
         return create_agent(
-            model,
+            model_obj,
             tools=[],
             system_prompt=SYSTEM_PROMPT,
             response_format=response_format,

@@ -1,0 +1,6 @@
+provider: openai
+model: gpt-5-mini-2025-08-07
+params:
+  temperature: 0
+  max_tokens: 4096
+

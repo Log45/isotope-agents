@@ -1,0 +1,22 @@
+provider: huggingface
+model: google/gemma-3-4b-it
+params:
+  # ChatHuggingFace.from_model_id kwargs (passed through init_chat_model)
+  backend: pipeline
+  task: text-generation
+
+  # Generation params
+  max_new_tokens: 1024
+  temperature: 0
+
+  # Pipeline/model construction kwargs
+  device_map: auto
+  model_kwargs: {}
+    # torch_dtype: bfloat16
+    # Example 4-bit quantization via bitsandbytes
+    # quantization_config:
+    #   load_in_4bit: true
+    #   bnb_4bit_quant_type: nf4
+    #   bnb_4bit_compute_dtype: bfloat16
+    #   bnb_4bit_use_double_quant: true
+

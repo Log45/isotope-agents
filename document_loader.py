@@ -24,20 +24,16 @@ SECTION_PATTERNS = [
 SECTION_REGEXES = [
     # Top-level numbered sections: "1. Introduction"
     re.compile(r"^\s*\d+\.\s+[A-Z][A-Za-z].+$"),
-
     # Subsections: "2.1. Cobalt-55"
     re.compile(r"^\s*\d+\.\d+\.\s+[A-Z][A-Za-z].+$"),
-    
     # All caps sections: "METHODS"
     re.compile(r"^[A-Z][A-Z\s\-]{3,}$"),
-
     # Named sections without numbers (rare but real)
     re.compile(r"^(Abstract|Introduction|Results|Discussion|Conclusion|References)\b"),
 ]
 
 
 def load_pdf_sections_structured(file_path):
-    import fitz
     doc = fitz.open(file_path)
 
     documents = []
@@ -195,9 +191,9 @@ def extract_paper_metadata(file_path: str) -> dict:
     }
 
 def load_and_process_pdf(file_path: str) -> list[Document]:
-    sections = load_pdf_sections_structured(file_path)
-    table_docs = extract_tables(file_path)
-    langchain_docs = make_langchain_docs(sections)
+    sections = load_pdf_sections_structured(file_path) # Split paper into sections based on regex
+    table_docs = extract_tables(file_path) # Attempt to extract tables from paper
+    langchain_docs = make_langchain_docs(sections) # Split sections into chunks with section metadata
 
     return langchain_docs + table_docs
 

@@ -1,0 +1,7 @@
+provider: openai
+model: gpt-5-nano-2025-08-07
+params:
+  temperature: 0
+  # Increase to avoid LengthFinishReasonError (truncated JSON)
+  max_tokens: 4096
+

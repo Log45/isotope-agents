@@ -1,0 +1,7 @@
+provider: openai
+model: gpt-5-2025-08-07
+params:
+  temperature: 0
+  # gpt-5 can still truncate at 2048 for long structured JSON; use a higher ceiling.
+  max_tokens: 4096
+

@@ -1,0 +1,6 @@
+provider: openai
+model: o4-mini-2025-04-16
+params:
+  # Note: some o-series models only support default temperature (and may reject custom values).
+  max_tokens: 1024
+

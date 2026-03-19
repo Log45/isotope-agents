@@ -58,13 +58,28 @@ class FinalProduct(BaseModel):
 
     class Config:
         populate_by_name = True
+        
+class TargetMaterialList(BaseModel):
+    items: list[TargetMaterial] = Field(default_factory=list)
+
+class AcidOrSolventList(BaseModel):
+    items: list[AcidOrSolvent] = Field(default_factory=list)
+
+class ResinOrColumnList(BaseModel):
+    items: list[ResinOrColumn] = Field(default_factory=list)
+
+class ElutionConditionList(BaseModel):
+    items: list[ElutionCondition] = Field(default_factory=list)
+
+class FinalProductList(BaseModel):
+    items: list[FinalProduct] = Field(default_factory=list)
 
 
 class IsotopeProcessFormat(BaseModel):
     """Complete structure for isotope separation process documentation."""
     paper_metadata: PaperMetadata = Field(description="Metadata about the research paper")
-    target_materials: TargetMaterial = Field(description="Target material information")
-    acids_and_solvents: AcidOrSolvent = Field(description="Acids, solvents, and bases used")
-    resins_or_columns: ResinOrColumn = Field(description="Resins or columns used")
-    elution_conditions: ElutionCondition = Field(description="Elution process conditions")
-    final_products: FinalProduct = Field(description="Final product information")
+    target_materials: TargetMaterialList = Field(description="Target material information")
+    acids_and_solvents: AcidOrSolventList = Field(description="Acids, solvents, and bases used")
+    resins_or_columns: ResinOrColumnList = Field(description="Resins or columns used")
+    elution_conditions: ElutionConditionList = Field(description="Elution process conditions")
+    final_products: FinalProductList = Field(description="Final product information")

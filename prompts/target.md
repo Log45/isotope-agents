@@ -14,9 +14,13 @@ IMPORTANT: The name of the target should match the chemical formula and the isot
 You must not return the product isotope in this section, just the initial material. 
 
 {
-  "name": "string | null",
-  "chemical_formula": "string | null",
-  "isotope": "string | null",
-  "physical_form": "string | null",
-  "source_section": "string | null"
-} 
+  "items": [
+    {
+      "name": "string | null",
+      "chemical_formula": "string | null",
+      "isotope": "string | null",
+      "physical_form": "string | null",
+      "source_section": "string | null"
+    }
+  ]
+}

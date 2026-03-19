@@ -6,7 +6,7 @@ from langchain_openai.embeddings import OpenAIEmbeddings
 from langchain.messages import HumanMessage
 from agents import RAGPipeline, TARGET_MATERIAL_PROMPT, ACID_PROMPT, RESIN_PROMPT, ELUTION_PROMPT, FINAL_PRODUCT_PROMPT, SYSTEM_PROMPT
 from dotenv import load_dotenv
-from models import PaperMetadata, TargetMaterial, AcidOrSolvent, ResinOrColumn, ElutionCondition, FinalProduct, IsotopeProcessFormat
+from models import PaperMetadata, TargetMaterialList, AcidOrSolventList, ResinOrColumnList, ElutionConditionList, FinalProductList, IsotopeProcessFormat
 from huggingface_hub import login
 import os
 import json
@@ -15,6 +15,11 @@ import torch
 import traceback
 from pathlib import Path
 import sys
+import argparse
+import dataclasses
+
+from model_config import ModelConfig, load_model_config
+import yaml
 
 load_dotenv()
 
@@ -48,7 +53,13 @@ def test_document_loader():
         with open(f"./out/{file}.txt", "w", encoding="utf-8") as f:        
             f.write(out_string)
 
-def extract_isotope_process_info(file_path: str, model="gpt-4o-mini-2024-07-18", provider=None, logging=False) -> IsotopeProcessFormat | None:
+def extract_isotope_process_info(
+    file_path: str,
+    model: str = "gpt-4o-mini-2024-07-18",
+    provider: str | None = None,
+    model_config: ModelConfig | None = None,
+    logging: bool = False,
+) -> IsotopeProcessFormat | None:
     try:
         docs = load_and_process_pdf(file_path)
         embedding_model = OpenAIEmbeddings()
@@ -65,7 +76,9 @@ def extract_isotope_process_info(file_path: str, model="gpt-4o-mini-2024-07-18",
         
         # Extract Target Material Information
         try:
-            target_agent = rag_pipeline.create_agent(model=model, provider=provider, response_format=TargetMaterial)
+            target_agent = rag_pipeline.create_agent(
+                model=model, provider=provider, response_format=TargetMaterialList, config=model_config
+            )
             target_agent_response = target_agent.invoke({"messages": [HumanMessage(TARGET_MATERIAL_PROMPT)]})
             if logging:
                 print("logging target material response")
@@ -76,7 +89,7 @@ def extract_isotope_process_info(file_path: str, model="gpt-4o-mini-2024-07-18",
         except Exception as e:
             print(f"  Warning: Failed to extract target material: {e}")
             traceback.print_exc()
-            target_material = TargetMaterial()
+            target_material = TargetMaterialList()
         
         # Clean up target agent and free memory before creating new agents 
         del target_agent
@@ -86,7 +99,9 @@ def extract_isotope_process_info(file_path: str, model="gpt-4o-mini-2024-07-18",
         
         # Extract Acid or Solvent Information
         try:
-            acid_agent = rag_pipeline.create_agent(model=model, provider=provider, response_format=AcidOrSolvent)
+            acid_agent = rag_pipeline.create_agent(
+                model=model, provider=provider, response_format=AcidOrSolventList, config=model_config
+            )
             acid_agent_response = acid_agent.invoke({"messages": [HumanMessage(ACID_PROMPT)]})
             if logging:
                 with open(log_path, "a", encoding="utf-8") as log_file:
@@ -96,7 +111,7 @@ def extract_isotope_process_info(file_path: str, model="gpt-4o-mini-2024-07-18",
         except Exception as e:
             print(f"  Warning: Failed to extract acid/solvent: {e}")
             traceback.print_exc()
-            acid_or_solvent = AcidOrSolvent()
+            acid_or_solvent = AcidOrSolventList()
             
         # Clean up acid agent and free memory before creating new agents
         del acid_agent
@@ -106,7 +121,9 @@ def extract_isotope_process_info(file_path: str, model="gpt-4o-mini-2024-07-18",
         
         # Extract Resin or Column Information
         try:
-            resin_agent = rag_pipeline.create_agent(model=model, provider=provider, response_format=ResinOrColumn)
+            resin_agent = rag_pipeline.create_agent(
+                model=model, provider=provider, response_format=ResinOrColumnList, config=model_config
+            )
             resin_agent_response = resin_agent.invoke({"messages": [HumanMessage(RESIN_PROMPT)]})
             if logging:
                 with open(log_path, "a", encoding="utf-8") as log_file:
@@ -116,7 +133,7 @@ def extract_isotope_process_info(file_path: str, model="gpt-4o-mini-2024-07-18",
         except Exception as e:
             print(f"  Warning: Failed to extract resin/column: {e}")
             traceback.print_exc()
-            resin_or_column = ResinOrColumn()
+            resin_or_column = ResinOrColumnList()
             
         del resin_agent
         gc.collect()
@@ -125,7 +142,9 @@ def extract_isotope_process_info(file_path: str, model="gpt-4o-mini-2024-07-18",
         
         # Extract Elution Condition Information
         try:
-            elution_agent = rag_pipeline.create_agent(model=model, provider=provider, response_format=ElutionCondition)
+            elution_agent = rag_pipeline.create_agent(
+                model=model, provider=provider, response_format=ElutionConditionList, config=model_config
+            )
             elution_agent_response = elution_agent.invoke({"messages": [HumanMessage(ELUTION_PROMPT)]})
             if logging:
                 with open(log_path, "a", encoding="utf-8") as log_file:
@@ -135,7 +154,7 @@ def extract_isotope_process_info(file_path: str, model="gpt-4o-mini-2024-07-18",
         except Exception as e:
             print(f"  Warning: Failed to extract elution conditions: {e}")
             traceback.print_exc()
-            elution_condition = ElutionCondition()
+            elution_condition = ElutionConditionList()
             
         del elution_agent
         gc.collect()
@@ -144,7 +163,9 @@ def extract_isotope_process_info(file_path: str, model="gpt-4o-mini-2024-07-18",
         
         # Extract Final Product Information
         try:
-            final_product_agent = rag_pipeline.create_agent(model=model, provider=provider, response_format=FinalProduct)
+            final_product_agent = rag_pipeline.create_agent(
+                model=model, provider=provider, response_format=FinalProductList, config=model_config
+            )
             final_product_agent_response = final_product_agent.invoke({"messages": [HumanMessage(FINAL_PRODUCT_PROMPT)]})
             if logging:
                 with open(log_path, "a", encoding="utf-8") as log_file:
@@ -154,7 +175,7 @@ def extract_isotope_process_info(file_path: str, model="gpt-4o-mini-2024-07-18",
         except Exception as e:
             print(f"  Warning: Failed to extract final product: {e}")
             traceback.print_exc()
-            final_product = FinalProduct()
+            final_product = FinalProductList()
         
         # Clean up vector store after processing so only one paper is in memory at a time
         try:
@@ -227,9 +248,8 @@ def close_log_file(log_file: TextIOWrapper) -> None:
     log_file.close()
     sys.stderr = sys.__stderr__
     sys.stdout = sys.__stdout__
-    
 
-if __name__ == "__main__":
+def main(cfg: ModelConfig | None = None):
     exp_dir = get_save_folder()
     log_file = set_log_path(exp_dir)
     # save prompts to experiment folder
@@ -246,10 +266,12 @@ if __name__ == "__main__":
         f.write(RESIN_PROMPT)
     with open(f"{exp_dir}/prompts/system.md", "w") as f:
         f.write(SYSTEM_PROMPT)
-    
+    with open(f"{exp_dir}/config.yaml", "w") as f:
+        # ModelConfig is a dataclass:
+        yaml.dump(dataclasses.asdict(cfg), f, default_flow_style=False)
     for file in os.listdir("./papers"):
         print(f"Processing file: {file}")
-        result = extract_isotope_process_info(f"./papers/{file}", logging=True)
+        result = extract_isotope_process_info(f"./papers/{file}", model_config=cfg, logging=False)
         if result:
             print(f"Extraction Complete for {file}")
             with open(f"{exp_dir}/{file}.json", "w", encoding="utf-8") as f:
@@ -257,3 +279,22 @@ if __name__ == "__main__":
         else:
             print(f"Failed to extract from {file}")
     close_log_file(log_file)
+    
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Path to model config YAML (supports OpenAI and HuggingFace).",
+    )
+    args = parser.parse_args()
+    
+    if args.config:
+        cfg = load_model_config(args.config)
+        main(cfg)
+    else:
+        for cfg in os.listdir("config"):
+            if "openai" in cfg:
+                cfg = load_model_config(f"config/{cfg}")
+                main(cfg)

@@ -13,10 +13,14 @@ For each final product, extract:
 IMPORTANT: Return ONLY valid JSON with no additional text, explanation, or comments. The response must be parseable as JSON.
 
 {
-  "name": "string | null",
-  "isotope": "string | null",
-  "chemical_form": "string | null",
-  "purity": "string | null",
-  "yield": "string | null",
-  "source_section": "string | null"
+  "items": [
+    {
+      "name": "string | null",
+      "isotope": "string | null",
+      "chemical_form": "string | null",
+      "purity": "string | null",
+      "yield": "string | null",
+      "source_section": "string | null"
+    }
+  ]
 }

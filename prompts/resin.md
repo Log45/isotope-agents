@@ -13,10 +13,14 @@ For each resin or column, extract:
 IMPORTANT: Return ONLY valid JSON with no additional text, explanation, or comments. The response must be parseable as JSON.
 
 {
-  "name": "string | null",
-  "material": "string | null",
-  "mesh_size": "string | null",
-  "column_dimensions": "string | null",
-  "role": "string | null",
-  "source_section": "string | null"
+  "items": [
+    {
+      "name": "string | null",
+      "material": "string | null",
+      "mesh_size": "string | null",
+      "column_dimensions": "string | null",
+      "role": "string | null",
+      "source_section": "string | null"
+    }
+  ]
 }
