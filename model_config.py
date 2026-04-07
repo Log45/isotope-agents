@@ -63,6 +63,13 @@ def normalize_model_params(provider: PROVIDER, params: dict[str, Any]) -> dict[s
     params = dict(params or {})
 
     if provider == "huggingface":
+        # Transformers requires temperature > 0. For deterministic extraction we
+        # treat non-positive temperatures as greedy decoding.
+        temp = params.get("temperature")
+        if isinstance(temp, (int, float)) and temp <= 0:
+            params.pop("temperature", None)
+            params.setdefault("do_sample", False)
+
         # Common place to put HF model loading args is `model_kwargs`.
         model_kwargs = params.get("model_kwargs")
         if isinstance(model_kwargs, dict):
