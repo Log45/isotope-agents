@@ -76,6 +76,7 @@ def extract_isotope_process_info(
         
         # Extract Target Material Information
         try:
+            print("Extracting target materials...")
             target_agent = rag_pipeline.create_agent(
                 model=model, provider=provider, response_format=TargetMaterialList, config=model_config
             )
@@ -99,6 +100,7 @@ def extract_isotope_process_info(
         
         # Extract Acid or Solvent Information
         try:
+            print("Extracting acid information...")
             acid_agent = rag_pipeline.create_agent(
                 model=model, provider=provider, response_format=AcidOrSolventList, config=model_config
             )
@@ -121,6 +123,7 @@ def extract_isotope_process_info(
         
         # Extract Resin or Column Information
         try:
+            print("Extracting resin information...")
             resin_agent = rag_pipeline.create_agent(
                 model=model, provider=provider, response_format=ResinOrColumnList, config=model_config
             )
@@ -142,6 +145,7 @@ def extract_isotope_process_info(
         
         # Extract Elution Condition Information
         try:
+            print("Extracting elution information...")
             elution_agent = rag_pipeline.create_agent(
                 model=model, provider=provider, response_format=ElutionConditionList, config=model_config
             )
@@ -163,6 +167,7 @@ def extract_isotope_process_info(
         
         # Extract Final Product Information
         try:
+            print("Extracting final product(s)...")
             final_product_agent = rag_pipeline.create_agent(
                 model=model, provider=provider, response_format=FinalProductList, config=model_config
             )
@@ -295,6 +300,8 @@ if __name__ == "__main__":
         main(cfg)
     else:
         for cfg in os.listdir("config"):
+            if "30B" in cfg and "4bit" not in cfg: # skip QWEN 30B that is not quantized due to CUDA memory error.
+                continue
             if "hf" in cfg:
                 cfg = load_model_config(f"config/{cfg}")
                 main(cfg)
