@@ -295,6 +295,6 @@ if __name__ == "__main__":
         main(cfg)
     else:
         for cfg in os.listdir("config"):
-            if "openai" in cfg:
+            if "huggingface" in cfg:
                 cfg = load_model_config(f"config/{cfg}")
                 main(cfg)
