@@ -1,4 +1,5 @@
 from typing import Any
+import json
 
 from langchain.agents.middleware import AgentMiddleware, AgentState
 from langchain_core.vectorstores import VectorStore
@@ -272,6 +273,26 @@ class RAGPipeline:
     def __init__(self, vector_store: VectorStore):
         self.vector_store = vector_store
         self.retrieve_middleware = RetrieveDocumentsMiddleware(vector_store=self.vector_store)
+        self._model_cache: dict[str, Any] = {}
+
+    def _cache_key(self, provider: str | None, model: str | None, model_params: dict[str, Any]) -> str:
+        try:
+            params_key = json.dumps(model_params, sort_keys=True, default=str)
+        except Exception:
+            params_key = str(model_params)
+        return f"{provider}::{model}::{params_key}"
+
+    def _get_or_create_model(self, provider: str, model: str, model_params: dict[str, Any]):
+        key = self._cache_key(provider, model, model_params)
+        cached = self._model_cache.get(key)
+        if cached is not None:
+            return cached
+
+        model_obj = init_chat_model(model, model_provider=provider, **model_params)
+        if provider == "huggingface":
+            model_obj = HuggingFaceMessageNormalizer(inner=model_obj, model_name=model)
+        self._model_cache[key] = model_obj
+        return model_obj
 
     def create_agent(
         self,
@@ -296,9 +317,7 @@ class RAGPipeline:
             if not model_params:
                 model_params = {"max_new_tokens": 2048} if provider == "huggingface" else {"max_tokens": 2048}
 
-            model_obj = init_chat_model(model, model_provider=provider, **model_params)
-            if provider == "huggingface":
-                model_obj = HuggingFaceMessageNormalizer(inner=model_obj, model_name=model)
+            model_obj = self._get_or_create_model(provider, model, model_params)
         else:
             model_obj = model
         return create_agent(

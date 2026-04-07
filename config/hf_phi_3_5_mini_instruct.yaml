@@ -3,12 +3,13 @@ model: microsoft/Phi-3.5-mini-instruct
 params:
   backend: pipeline
   task: text-generation
-  device_map: auto
+  device_map: cuda:0
 
   # Generation
   max_new_tokens: 2048
   temperature: 0
 
   # Model loading
-  model_kwargs: {}
+  model_kwargs:
+    torch_dtype: bfloat16
 
