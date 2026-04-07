@@ -3,7 +3,7 @@ model: microsoft/Phi-3.5-mini-instruct
 params:
   backend: pipeline
   task: text-generation
-  device_map: auto
+  device_map: cuda:0 # auto
 
   # Generation
   max_new_tokens: 2048
