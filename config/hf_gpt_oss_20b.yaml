@@ -1,5 +1,5 @@
 provider: huggingface
-model: google/gemma-2-2b-it
+model: openai/gpt-oss-20b
 params:
   backend: pipeline
   task: text-generation
@@ -10,6 +10,5 @@ params:
   temperature: 0
 
   # Model loading
-  model_kwargs:
-    torch_dtype: bfloat16
+  model_kwargs: {}
 

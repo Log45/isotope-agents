@@ -131,6 +131,46 @@ def _ensure_hf_chat_compat(messages):
     return [HumanMessage(content=" ")]
 
 
+def _is_phi_model(model_name: str | None) -> bool:
+    if not model_name:
+        return False
+    name = model_name.lower()
+    return "microsoft/phi-" in name or "/phi-" in name
+
+
+def _normalize_phi_messages_for_hf(messages):
+    """Preserve role structure for Phi chat templates.
+
+    Phi model cards recommend strict system/user/assistant formatting. This keeps
+    turns intact (instead of collapsing to one user message) while still ensuring
+    a valid ending user turn for HF chat templates.
+    """
+    msgs = [m for m in messages if _role_for_fold(m) in ("system", "user", "assistant")]
+    if not msgs:
+        return [HumanMessage(content=" ")]
+
+    # Merge consecutive messages with the same role to maintain alternation.
+    merged = []
+    for m in msgs:
+        role = _role_for_fold(m)
+        if merged and _role_for_fold(merged[-1]) == role:
+            merged[-1].content = (merged[-1].content or "") + "\n\n" + (_content_str(m) or "")
+        else:
+            merged.append(m)
+
+    # Ensure conversation doesn't end on assistant (HF templates generally require last=user).
+    while merged and _role_for_fold(merged[-1]) == "assistant":
+        merged.pop()
+    if not merged:
+        return [HumanMessage(content=" ")]
+
+    # Ensure at least one user turn exists.
+    if not any(_role_for_fold(m) == "user" for m in merged):
+        merged.append(HumanMessage(content=" "))
+
+    return merged
+
+
 class HuggingFaceMessageNormalizer(BaseChatModel):
     """Wraps a HuggingFace chat model so messages are normalized to BaseMessage instances before invoke.
     Fixes 'Last message must be a HumanMessage!' when the agent passes message dicts or other representations.
@@ -138,11 +178,15 @@ class HuggingFaceMessageNormalizer(BaseChatModel):
 
     # Inner may be BaseChatModel or RunnableBinding (returned by bind_tools); use Any so Pydantic accepts both
     inner: Any
+    model_name: str | None = None
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs):
         messages = list(convert_to_messages(messages))
-        messages = _fold_system_into_user_for_hf(messages)
-        messages = _ensure_hf_chat_compat(messages)
+        if _is_phi_model(self.model_name):
+            messages = _normalize_phi_messages_for_hf(messages)
+        else:
+            messages = _fold_system_into_user_for_hf(messages)
+            messages = _ensure_hf_chat_compat(messages)
         if isinstance(self.inner, BaseChatModel):
             return self.inner._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
         # inner is RunnableBinding (from bind_tools); invoke returns AIMessage
@@ -151,8 +195,11 @@ class HuggingFaceMessageNormalizer(BaseChatModel):
 
     async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
         messages = list(convert_to_messages(messages))
-        messages = _fold_system_into_user_for_hf(messages)
-        messages = _ensure_hf_chat_compat(messages)
+        if _is_phi_model(self.model_name):
+            messages = _normalize_phi_messages_for_hf(messages)
+        else:
+            messages = _fold_system_into_user_for_hf(messages)
+            messages = _ensure_hf_chat_compat(messages)
         if isinstance(self.inner, BaseChatModel):
             return await self.inner._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
         response = await self.inner.ainvoke(messages)
@@ -160,7 +207,7 @@ class HuggingFaceMessageNormalizer(BaseChatModel):
 
     def bind_tools(self, tools, **kwargs):
         bound = self.inner.bind_tools(tools, **kwargs)
-        return HuggingFaceMessageNormalizer(inner=bound)
+        return HuggingFaceMessageNormalizer(inner=bound, model_name=self.model_name)
 
     @property
     def _llm_type(self) -> str:
@@ -247,11 +294,11 @@ class RAGPipeline:
         if provider:
             # Backwards compatible defaults if caller didn't pass any params
             if not model_params:
-                model_params = {"max_new_tokens": 1024} if provider == "huggingface" else {"max_tokens": 1024}
+                model_params = {"max_new_tokens": 2048} if provider == "huggingface" else {"max_tokens": 2048}
 
             model_obj = init_chat_model(model, model_provider=provider, **model_params)
             if provider == "huggingface":
-                model_obj = HuggingFaceMessageNormalizer(inner=model_obj)
+                model_obj = HuggingFaceMessageNormalizer(inner=model_obj, model_name=model)
         else:
             model_obj = model
         return create_agent(

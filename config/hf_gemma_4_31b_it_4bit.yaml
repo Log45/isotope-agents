@@ -1,5 +1,5 @@
 provider: huggingface
-model: google/gemma-2-9b-it
+model: google/gemma-4-31B-it
 params:
   backend: pipeline
   task: text-generation

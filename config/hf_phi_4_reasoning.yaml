@@ -1,15 +1,14 @@
 provider: huggingface
-model: google/gemma-2-2b-it
+model: microsoft/Phi-4-reasoning
 params:
   backend: pipeline
   task: text-generation
   device_map: auto
 
   # Generation
-  max_new_tokens: 2048
+  max_new_tokens: 4096
   temperature: 0
 
   # Model loading
-  model_kwargs:
-    torch_dtype: bfloat16
+  model_kwargs: {}
 

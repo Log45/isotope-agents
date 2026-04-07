@@ -6,7 +6,7 @@ params:
   device_map: auto
 
   # Generation
-  max_new_tokens: 1024
+  max_new_tokens: 2048
   temperature: 0
 
   # Model loading (4-bit bitsandbytes)

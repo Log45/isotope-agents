@@ -6,7 +6,7 @@ params:
   task: text-generation
 
   # Generation params
-  max_new_tokens: 1024
+  max_new_tokens: 2048
   temperature: 0
 
   # Pipeline/model construction kwargs
