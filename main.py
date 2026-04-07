@@ -61,6 +61,7 @@ def extract_isotope_process_info(
     logging: bool = False,
 ) -> IsotopeProcessFormat | None:
     try:
+        print("Starting extraction process")
         docs = load_and_process_pdf(file_path)
         embedding_model = OpenAIEmbeddings()
         vector_store = create_vector_store(docs, embedding_model, vectorstore_cls=Chroma, collection_name="isotope_docs")
