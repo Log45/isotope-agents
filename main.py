@@ -37,6 +37,32 @@ def _agent_response_to_json_serializable(obj):
     return obj
 
 
+def _to_yaml_serializable(obj):
+    """Convert runtime objects (e.g., torch dtypes/configs) to YAML-safe values."""
+    if isinstance(obj, (str, int, float, bool, type(None))):
+        return obj
+    if isinstance(obj, torch.dtype):
+        # Keep readable values such as "bfloat16" / "float16"
+        return str(obj).replace("torch.", "")
+    if dataclasses.is_dataclass(obj):
+        return _to_yaml_serializable(dataclasses.asdict(obj))
+    if isinstance(obj, dict):
+        return {k: _to_yaml_serializable(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_to_yaml_serializable(v) for v in obj]
+    if hasattr(obj, "to_dict"):
+        try:
+            return _to_yaml_serializable(obj.to_dict())
+        except Exception:
+            pass
+    if hasattr(obj, "model_dump"):
+        try:
+            return _to_yaml_serializable(obj.model_dump())
+        except Exception:
+            pass
+    return str(obj)
+
+
 hf_token = os.environ.get("HUGGINGFACEHUB_API_TOKEN", None)
 if hf_token:
     login(hf_token)
@@ -273,8 +299,8 @@ def main(cfg: ModelConfig | None = None):
     with open(f"{exp_dir}/prompts/system.md", "w") as f:
         f.write(SYSTEM_PROMPT)
     with open(f"{exp_dir}/config.yaml", "w") as f:
-        # ModelConfig is a dataclass:
-        yaml.dump(dataclasses.asdict(cfg), f, default_flow_style=False)
+        cfg_payload = _to_yaml_serializable(cfg) if cfg is not None else {}
+        yaml.safe_dump(cfg_payload, f, default_flow_style=False, sort_keys=False)
     for file in os.listdir("./papers"):
         print(f"Processing file: {file}")
         result = extract_isotope_process_info(f"./papers/{file}", model_config=cfg, logging=False)
