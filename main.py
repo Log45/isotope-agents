@@ -4,7 +4,7 @@ from document_loader import load_and_process_pdf, create_vector_store, extract_p
 from langchain_community.vectorstores import Chroma
 from langchain_openai.embeddings import OpenAIEmbeddings
 from langchain.messages import HumanMessage
-from agents import RAGPipeline, TARGET_MATERIAL_PROMPT, ACID_PROMPT, RESIN_PROMPT, ELUTION_PROMPT, FINAL_PRODUCT_PROMPT, SYSTEM_PROMPT
+from agents import RAGPipeline, TARGET_MATERIAL_PROMPT, ACID_PROMPT, RESIN_PROMPT, ELUTION_PROMPT, FINAL_PRODUCT_PROMPT, SYSTEM_PROMPT, EXTRACT_ALL_PROMPT, SUMMARIZE_PAPER_PROMPT, SUMMARIZE_SECTION_PROMPT, SummarizerAgent, IsotopeProcessExtractionAgent
 from dotenv import load_dotenv
 from models import PaperMetadata, TargetMaterialList, AcidOrSolventList, ResinOrColumnList, ElutionConditionList, FinalProductList, IsotopeProcessFormat
 from huggingface_hub import login
@@ -78,6 +78,37 @@ def test_document_loader():
             out_string += "-" * 80 + "\n"
         with open(f"./out/{file}.txt", "w", encoding="utf-8") as f:        
             f.write(out_string)
+            
+def extract_info_full_summary( file_path: str,
+    model: str = "gpt-4o-mini-2024-07-18",
+    provider: str | None = None,
+    model_config: ModelConfig | None = None,
+    ) -> IsotopeProcessFormat:
+    sections = load_and_process_pdf(file_path)
+    summarizer = SummarizerAgent(model=model, provider=provider, config=model_config)
+    summaries = summarizer.summarize_full(sections)
+    
+    isotope_agent = IsotopeProcessExtractionAgent(model=model, provider=provider, config=model_config)
+    isotope_response = isotope_agent.extract_from_summaries(summaries)
+    paper_metadata = PaperMetadata(**extract_paper_metadata(file_path))
+    isotope_response.paper_metadata = paper_metadata
+    return isotope_response
+            
+def extract_info_sections_summary(
+    file_path: str,
+    model: str = "gpt-4o-mini-2024-07-18",
+    provider: str | None = None,
+    model_config: ModelConfig | None = None,
+    ) -> IsotopeProcessFormat:
+    sections = load_and_process_pdf(file_path)
+    summarizer = SummarizerAgent(model=model, provider=provider, config=model_config)
+    summaries = summarizer.summarize_sections(sections)
+    
+    isotope_agent = IsotopeProcessExtractionAgent(model=model, provider=provider, config=model_config)
+    isotope_response = isotope_agent.extract_from_summaries(summaries)
+    paper_metadata = PaperMetadata(**extract_paper_metadata(file_path))
+    isotope_response.paper_metadata = paper_metadata
+    return isotope_response
 
 def extract_isotope_process_info(
     file_path: str,
@@ -312,6 +343,96 @@ def main(cfg: ModelConfig | None = None):
             print(f"Failed to extract from {file}")
     close_log_file(log_file)
     
+def test_sections_and_full_summary(cfg: ModelConfig | None = None):
+    exp_dir = get_save_folder()
+    log_file = set_log_path(exp_dir)
+    # save prompts to experiment folder
+    os.mkdir(f"{exp_dir}/prompts")
+    os.mkdir(f"{exp_dir}/section_summaries")
+    os.mkdir(f"{exp_dir}/full_summary")
+    os.mkdir(f"{exp_dir}/rag_output")
+    with open(f"{exp_dir}/prompts/summarize_section.md", "w") as f:
+        f.write(SUMMARIZE_SECTION_PROMPT)
+    with open(f"{exp_dir}/prompts/summarize_paper.md", "w") as f:
+        f.write(SUMMARIZE_PAPER_PROMPT)
+    with open(f"{exp_dir}/config.yaml", "w") as f:
+        cfg_payload = _to_yaml_serializable(cfg) if cfg is not None else {}
+        yaml.safe_dump(cfg_payload, f, default_flow_style=False, sort_keys=False)
+    for file in os.listdir("./papers"):
+        print(f"Processing file: {file}")
+        summarize_sections_result = extract_info_sections_summary(f"./papers/{file}", model_config=cfg)
+        if summarize_sections_result:
+            print(f"Section Summary Extraction Complete for {file}")
+            with open(f"{exp_dir}/section_summaries/{file}.json", "w", encoding="utf-8") as f:
+                f.write(summarize_sections_result.model_dump_json(indent=2))
+        else:
+            print(f"Failed to extract from {file} section summaries")
+        summarize_full_result = extract_info_full_summary(f"./papers/{file}", model_config=cfg)
+        if summarize_full_result:
+            print(f"Full Summary Extraction Complete for {file}")
+            with open(f"{exp_dir}/full_summary/{file}.json", "w", encoding="utf-8") as f:
+                f.write(summarize_full_result.model_dump_json(indent=2))
+        else:
+            print(f"Failed to extract from {file} full summary")
+        break # just test one paper
+    close_log_file(log_file)
+    
+def test_all(cfg: ModelConfig | None = None):
+    exp_dir = get_save_folder()
+    log_file = set_log_path(exp_dir)
+    # save prompts to experiment folder
+    os.mkdir(f"{exp_dir}/prompts")
+    os.mkdir(f"{exp_dir}/section_summaries")
+    os.mkdir(f"{exp_dir}/full_summary")
+    os.mkdir(f"{exp_dir}/rag_output")
+    with open(f"{exp_dir}/prompts/target.md", "w") as f:
+        f.write(TARGET_MATERIAL_PROMPT)
+    with open(f"{exp_dir}/prompts/acid.md", "w") as f:
+        f.write(ACID_PROMPT)
+    with open(f"{exp_dir}/prompts/elution.md", "w") as f:
+        f.write(ELUTION_PROMPT)
+    with open(f"{exp_dir}/prompts/products.md", "w") as f:
+        f.write(FINAL_PRODUCT_PROMPT)
+    with open(f"{exp_dir}/prompts/resin.md", "w") as f:
+        f.write(RESIN_PROMPT)
+    with open(f"{exp_dir}/prompts/system.md", "w") as f:
+        f.write(SYSTEM_PROMPT)
+    with open(f"{exp_dir}/prompts/extract_all.md", "w") as f:
+        f.write(EXTRACT_ALL_PROMPT)
+    with open(f"{exp_dir}/prompts/summarize_section.md", "w") as f:
+        f.write(SUMMARIZE_SECTION_PROMPT)
+    with open(f"{exp_dir}/prompts/summarize_paper.md", "w") as f:
+        f.write(SUMMARIZE_PAPER_PROMPT)
+    with open(f"{exp_dir}/config.yaml", "w") as f:
+        cfg_payload = _to_yaml_serializable(cfg) if cfg is not None else {}
+        yaml.safe_dump(cfg_payload, f, default_flow_style=False, sort_keys=False)
+    for file in os.listdir("./papers"):
+        print(f"Processing file: {file}")
+        file_path = f"./papers/{file}"
+        summarize_sections_result = extract_info_sections_summary(file_path, model_config=cfg)
+        if summarize_sections_result:
+            print(f"Extraction Complete for {file}")
+            with open(f"{exp_dir}/section_summaries/{file}.json", "w", encoding="utf-8") as f:
+                f.write(summarize_sections_result.model_dump_json(indent=2))
+        else:
+            print(f"Failed to extract from {file} section summaries")
+        summarize_full_result = extract_info_full_summary(file_path, model_config=cfg)
+        if summarize_full_result:
+            print(f"Extraction Complete for {file}")
+            with open(f"{exp_dir}/full_summary/{file}.json", "w", encoding="utf-8") as f:
+                f.write(summarize_full_result.model_dump_json(indent=2))
+        else:
+            print(f"Failed to extract from {file} full summary")
+        
+        rag_result = extract_isotope_process_info(f"./papers/{file}", model_config=cfg, logging=False)
+        if rag_result:
+            print(f"RAG Extraction Complete for {file}")
+            with open(f"{exp_dir}/rag_output/{file}.json", "w", encoding="utf-8") as f:
+                f.write(rag_result.model_dump_json(indent=2))
+        else:
+            print(f"Failed to extract from {file} with RAG")
+    close_log_file(log_file)
+    
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -324,11 +445,15 @@ if __name__ == "__main__":
     
     if args.config:
         cfg = load_model_config(args.config)
-        main(cfg)
+        # main(cfg)
+        test_sections_and_full_summary(cfg)
     else:
         for cfg in os.listdir("config"):
             if "30B" in cfg and "4bit" not in cfg: # skip QWEN 30B that is not quantized due to CUDA memory error.
                 continue
-            if "hf" in cfg:
+            if "openai" in cfg.lower():
                 cfg = load_model_config(f"config/{cfg}")
-                main(cfg)
+                test_all(cfg)
+            # if "hf" in cfg:
+            #     cfg = load_model_config(f"config/{cfg}")
+            #     main(cfg)

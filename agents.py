@@ -17,6 +17,8 @@ from langchain_huggingface import ChatHuggingFace
 # Add more providers as needed
 
 from model_config import ModelConfig
+from models import IsotopeProcessFormat
+from document_loader import load_pdf_sections_structured
 
 # TODO: Add quantization support to experiment with larger models
 """
@@ -231,6 +233,15 @@ with open("./prompts/elution.md", "r", encoding="utf-8") as f:
     
 with open("./prompts/products.md", "r", encoding="utf-8") as f:
     FINAL_PRODUCT_PROMPT = f.read()
+    
+with open("./prompts/summarize_paper.md", "r", encoding="utf-8") as f:
+    SUMMARIZE_PAPER_PROMPT = f.read()
+
+with open("./prompts/summarize_section.md", "r", encoding="utf-8") as f:
+    SUMMARIZE_SECTION_PROMPT = f.read()
+    
+with open("./prompts/extract_all.md", "r", encoding="utf-8") as f:
+    EXTRACT_ALL_PROMPT = f.read()
 
 PROVIDERS = {
     "huggingface": ChatHuggingFace,
@@ -327,3 +338,154 @@ class RAGPipeline:
             response_format=response_format,
             middleware=[self.retrieve_middleware],
         )
+
+class IsotopeProcessExtractionAgent():
+    def __init__(self, 
+        model: str | None = None,
+        provider: str | None = None,
+        response_format: BaseModel = IsotopeProcessFormat,
+        config: ModelConfig | None = None,):
+        self._model_cache: dict[str, Any] = {}
+        self.agent = self.create_agent(model=model, provider=provider, response_format=response_format, config=config)
+        
+    def _cache_key(self, provider: str | None, model: str | None, model_params: dict[str, Any]) -> str:
+        try:
+            params_key = json.dumps(model_params, sort_keys=True, default=str)
+        except Exception:
+            params_key = str(model_params)
+        return f"{provider}::{model}::{params_key}"
+
+    def _get_or_create_model(self, provider: str, model: str, model_params: dict[str, Any]):
+        key = self._cache_key(provider, model, model_params)
+        cached = self._model_cache.get(key)
+        if cached is not None:
+            return cached
+
+        model_obj = init_chat_model(model, model_provider=provider, **model_params)
+        if provider == "huggingface":
+            model_obj = HuggingFaceMessageNormalizer(inner=model_obj, model_name=model)
+        self._model_cache[key] = model_obj
+        return model_obj
+    
+    def extract_from_summaries(self, summaries: str) -> IsotopeProcessFormat:
+        # LangGraph-backed agents expect an input state dict, not a raw messages list.
+        response = self.agent.invoke({"messages": [HumanMessage(content=summaries)]})
+        return response["structured_response"]
+    
+    def create_agent(
+        self,
+        model: str | None = None,
+        provider: str | None = None,
+        response_format: BaseModel = None,
+        config: ModelConfig | None = None,
+    ):
+        """Create an agent with the RAG middleware.
+
+        Preferred usage is to pass `config` (loaded from YAML via `load_model_config`).
+        """
+        if config is not None:
+            provider = config.provider
+            model = config.model
+            model_params = dict(config.params or {})
+        else:
+            model_params = {}
+
+        if provider:
+            # Backwards compatible defaults if caller didn't pass any params
+            if not model_params:
+                model_params = {"max_new_tokens": 2048} if provider == "huggingface" else {"max_tokens": 2048}
+
+            model_obj = self._get_or_create_model(provider, model, model_params)
+        else:
+            model_obj = model
+        return create_agent(
+            model_obj,
+            tools=[],
+            system_prompt=EXTRACT_ALL_PROMPT,
+            response_format=response_format,
+        )
+    
+class SummarizerAgent:
+    def __init__(self, model: str | None = None,
+        provider: str | None = None,
+        response_format: BaseModel = None,
+        config: ModelConfig | None = None,):
+        self._model_cache: dict[str, Any] = {}
+        
+        if config is not None:
+            provider = config.provider
+            model = config.model
+            model_params = dict(config.params or {})
+        else:
+            model_params = {}
+
+        if provider:
+            # Backwards compatible defaults if caller didn't pass any params
+            if not model_params:
+                model_params = {"max_new_tokens": 1024} if provider == "huggingface" else {"max_tokens": 2048}
+
+            model_obj = self._get_or_create_model(provider, model, model_params)
+        else:
+            model_obj = model
+        self.agent = create_agent(
+            model_obj,
+            tools=[]
+        )
+        
+    def _cache_key(self, provider: str | None, model: str | None, model_params: dict[str, Any]) -> str:
+        try:
+            params_key = json.dumps(model_params, sort_keys=True, default=str)
+        except Exception:
+            params_key = str(model_params)
+        return f"{provider}::{model}::{params_key}"
+
+    def _get_or_create_model(self, provider: str, model: str, model_params: dict[str, Any]):
+        key = self._cache_key(provider, model, model_params)
+        cached = self._model_cache.get(key)
+        if cached is not None:
+            return cached
+
+        model_obj = init_chat_model(model, model_provider=provider, **model_params)
+        if provider == "huggingface":
+            model_obj = HuggingFaceMessageNormalizer(inner=model_obj, model_name=model)
+        self._model_cache[key] = model_obj
+        return model_obj
+
+    def summarize_full(self, sections: list[Document]) -> str:
+        context = "\n\n".join(doc.page_content for doc in sections)
+        prompt = f"Paper:\n\n{context}"
+        response = self.agent.invoke(
+            {"messages": [SystemMessage(content=SUMMARIZE_PAPER_PROMPT), HumanMessage(content=prompt)]}
+        )
+        return _agent_invoke_result_to_text(response)
+    
+    def summarize_sections(self, sections: list[Document]) -> str:
+        summaries = []
+        for doc in sections:
+            prompt = f"Section ({doc.metadata.get('section', 'Unknown')}):\n\n{doc.page_content}"
+            response = self.agent.invoke(
+                {"messages": [SystemMessage(content=SUMMARIZE_SECTION_PROMPT), HumanMessage(content=prompt)]}
+            )
+            summaries.append(
+                f"Summary of {doc.metadata.get('section', 'Unknown')}:\n{_agent_invoke_result_to_text(response)}"
+            )
+        return "\n\n".join(summaries)
+
+
+def _agent_invoke_result_to_text(result: Any) -> str:
+    """Normalize various agent.invoke() return shapes into plain text."""
+    # Some agents return an AIMessage directly; others return a dict-like state.
+    if hasattr(result, "content"):
+        return (result.content or "").strip()
+    if isinstance(result, dict):
+        msgs = result.get("messages")
+        if isinstance(msgs, list) and msgs:
+            last = msgs[-1]
+            if hasattr(last, "content"):
+                return (last.content or "").strip()
+        # Fallback: try common keys
+        for k in ("output", "text", "content"):
+            v = result.get(k)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+    return str(result).strip()
