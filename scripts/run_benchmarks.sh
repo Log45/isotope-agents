@@ -1,0 +1,1 @@
+python benchmark.py --out-dir out --ground-truth-dir ground_truth --include-kinds rag_output,full_summary,section_summaries --exp-min 18

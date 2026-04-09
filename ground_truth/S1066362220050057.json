@@ -1,0 +1,105 @@
+{
+  "paper_metadata": {
+    "title": "Generator of Actinium-228 and a Study of the Sorption of Actinium by Carbon Nanomaterials",
+    "doi": "10.1134/S1066362220050057",
+    "source": ""
+  },
+  "target_materials": { 
+    "items": [
+      {
+        "name": "Thorium",
+        "chemical_formula": "Th",
+        "isotope": "232Th",
+        "physical_form": "aged natural thorium sample (bulk ~20 g)",
+        "source_section": "A method has been developed for isolation of 228Ac from aged samples of natural 232Th. Macroscopic amounts of the thorium bulk (20 g) were separated by its extraction by a solution of di(2-ethylhexyl)phosphoric acid in toluene from 4 M HNO3 solutions, with microamounts of 228Ra and 228Ac remaining in the aqueous phase. 228Ac was selectively extracted from the resulting solution by the method of extraction chromatography on a column with RE resin sorbent, and 228Ra quantitatively remained in the 4 M HNO3 eluate. 228Ac was washed out of the column with 0.05 M HNO3, it could be used as a radioisotope for research purposes."
+      },
+      {
+        "name": "Radium",
+        "chemical_formula": "Ra",
+        "isotope": "228Ra",
+        "physical_form": "aqueous phase (generator feed)",
+        "source_section": "A method has been developed for isolation of 228Ac from aged samples of natural 232Th. Macroscopic amounts of the thorium bulk (20 g) were separated by its extraction by a solution of di(2-ethylhexyl)phosphoric acid in toluene from 4 M HNO3 solutions, with microamounts of 228Ra and 228Ac remaining in the aqueous phase. 228Ac was selectively extracted from the resulting solution by the method of extraction chromatography on a column with RE resin sorbent, and 228Ra quantitatively remained in the 4 M HNO3 eluate."
+      }
+    ]
+  },
+  "acids_and_solvents": {
+    "items": [
+      {
+        "name": "HNO3",
+        "type": "acid",
+        "concentration": "4 M",
+        "role": "extraction / loading / eluate (Ra retained in eluate)",
+        "source_section": "Macroscopic amounts of the thorium bulk (20 g) were separated by its extraction by a solution of di(2-ethylhexyl)phosphoric acid in toluene from 4 M HNO3 solutions, with microamounts of 228Ra and 228Ac remaining in the aqueous phase. 228Ac was selectively extracted ... and 228Ra quantitatively remained in the 4 M HNO3 eluate."
+      },
+      {
+        "name": "HNO3",
+        "type": "acid",
+        "concentration": "0.05 M",
+        "role": "elution (Ac washed out)",
+        "source_section": "228Ac was washed out of the column with 0.05 M HNO3, it could be used as a radioisotope for research purposes."
+      },
+      {
+        "name": "di(2-ethylhexyl)phosphoric acid (HDEHP) in toluene",
+        "type": "solvent",
+        "concentration": null,
+        "role": "thorium extraction (organic phase)",
+        "source_section": "Macroscopic amounts of the thorium bulk (20 g) were separated by its extraction by a solution of di(2-ethylhexyl)phosphoric acid in toluene from 4 M HNO3 solutions, with microamounts of 228Ra and 228Ac remaining in the aqueous phase."
+      }
+    ]
+  },
+  "resins_or_columns": {
+    "items": [
+      {
+        "name": "RE resin sorbent column",
+        "material": "RE resin",
+        "mesh_size": null,
+        "column_dimensions": null,
+        "role": "extraction chromatography to selectively extract 228Ac",
+        "source_section": "228Ac was selectively extracted from the resulting solution by the method of extraction chromatography on a column with RE resin sorbent, and 228Ra quantitatively remained in the 4 M HNO3 eluate."
+      }
+    ]
+  },
+  "elution_conditions": {
+    "items": [
+      {
+        "eluent": "4 M HNO3",
+        "concentration": "4 M",
+        "volume": null,
+        "flow_rate": null,
+        "temperature": null,
+        "pH": null,
+        "source_section": "228Ra quantitatively remained in the 4 M HNO3 eluate."
+      },
+      {
+        "eluent": "0.05 M HNO3",
+        "concentration": "0.05 M",
+        "volume": null,
+        "flow_rate": null,
+        "temperature": null,
+        "pH": null,
+        "source_section": "228Ac was washed out of the column with 0.05 M HNO3, it could be used as a radioisotope for research purposes."
+      }
+    ]
+  },
+  "final_products": {
+    "items": [
+      {
+        "name": "Actinium-228",
+        "isotope": "228Ac",
+        "chemical_form": "in 0.05 M HNO3 (eluate)",
+        "purity": null,
+        "yield_": null,
+        "source_section": "228Ac was washed out of the column with 0.05 M HNO3, it could be used as a radioisotope for research purposes."
+      },
+      {
+        "name": "Radium-228 (generator parent fraction)",
+        "isotope": "228Ra",
+        "chemical_form": "in 4 M HNO3 (eluate)",
+        "purity": null,
+        "yield_": null,
+        "source_section": "228Ra quantitatively remained in the 4 M HNO3 eluate. After the accumulation of the daughter 228Ac the solution of 228Ra in 4 M HNO3 was repeatedly passed through an identical column."
+      }
+    ]
+  }
+}
+
