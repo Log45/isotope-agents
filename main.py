@@ -17,6 +17,7 @@ from pathlib import Path
 import sys
 import argparse
 import dataclasses
+from time import perf_counter
 
 from model_config import ModelConfig, load_model_config
 import yaml
@@ -84,15 +85,20 @@ def extract_info_full_summary( file_path: str,
     provider: str | None = None,
     model_config: ModelConfig | None = None,
     ) -> IsotopeProcessFormat:
-    sections = load_and_process_pdf(file_path)
-    summarizer = SummarizerAgent(model=model, provider=provider, config=model_config)
-    summaries = summarizer.summarize_full(sections)
-    
-    isotope_agent = IsotopeProcessExtractionAgent(model=model, provider=provider, config=model_config)
-    isotope_response = isotope_agent.extract_from_summaries(summaries)
-    paper_metadata = PaperMetadata(**extract_paper_metadata(file_path))
-    isotope_response.paper_metadata = paper_metadata
-    return isotope_response
+    try:
+        sections = load_and_process_pdf(file_path)
+        summarizer = SummarizerAgent(model=model, provider=provider, config=model_config)
+        summaries = summarizer.summarize_full(sections)
+        
+        isotope_agent = IsotopeProcessExtractionAgent(model=model, provider=provider, config=model_config)
+        isotope_response = isotope_agent.extract_from_summaries(summaries)
+        paper_metadata = PaperMetadata(**extract_paper_metadata(file_path))
+        isotope_response.paper_metadata = paper_metadata
+        return isotope_response
+    except Exception as e:
+        print(f"  Error in full summary extraction: {e}")
+        traceback.print_exc()
+        return IsotopeProcessFormat(paper_metadata=PaperMetadata(**extract_paper_metadata(file_path)), target_materials=TargetMaterialList(), acids_and_solvents=AcidOrSolventList(), resins_or_columns=ResinOrColumnList(), elution_conditions=ElutionConditionList(), final_products=FinalProductList())
             
 def extract_info_sections_summary(
     file_path: str,
@@ -100,15 +106,20 @@ def extract_info_sections_summary(
     provider: str | None = None,
     model_config: ModelConfig | None = None,
     ) -> IsotopeProcessFormat:
-    sections = load_and_process_pdf(file_path)
-    summarizer = SummarizerAgent(model=model, provider=provider, config=model_config)
-    summaries = summarizer.summarize_sections(sections)
-    
-    isotope_agent = IsotopeProcessExtractionAgent(model=model, provider=provider, config=model_config)
-    isotope_response = isotope_agent.extract_from_summaries(summaries)
-    paper_metadata = PaperMetadata(**extract_paper_metadata(file_path))
-    isotope_response.paper_metadata = paper_metadata
-    return isotope_response
+    try:
+        sections = load_and_process_pdf(file_path)
+        summarizer = SummarizerAgent(model=model, provider=provider, config=model_config)
+        summaries = summarizer.summarize_sections(sections)
+        
+        isotope_agent = IsotopeProcessExtractionAgent(model=model, provider=provider, config=model_config)
+        isotope_response = isotope_agent.extract_from_summaries(summaries)
+        paper_metadata = PaperMetadata(**extract_paper_metadata(file_path))
+        isotope_response.paper_metadata = paper_metadata
+        return isotope_response
+    except Exception as e:
+        print(f"  Error in section summary extraction: {e}")
+        traceback.print_exc()
+        return IsotopeProcessFormat(paper_metadata=PaperMetadata(**extract_paper_metadata(file_path)), target_materials=TargetMaterialList(), acids_and_solvents=AcidOrSolventList(), resins_or_columns=ResinOrColumnList(), elution_conditions=ElutionConditionList(), final_products=FinalProductList())
 
 def extract_isotope_process_info(
     file_path: str,
@@ -409,28 +420,42 @@ def test_all(cfg: ModelConfig | None = None):
     for file in os.listdir("./papers"):
         print(f"Processing file: {file}")
         file_path = f"./papers/{file}"
+        sections_t1 = perf_counter()
         summarize_sections_result = extract_info_sections_summary(file_path, model_config=cfg)
+        sections_t2 = perf_counter()
         if summarize_sections_result:
-            print(f"Extraction Complete for {file}")
+            print(f"Extraction Complete for {file} section summaries")
             with open(f"{exp_dir}/section_summaries/{file}.json", "w", encoding="utf-8") as f:
                 f.write(summarize_sections_result.model_dump_json(indent=2))
         else:
             print(f"Failed to extract from {file} section summaries")
+        full_summary_t1 = perf_counter()
         summarize_full_result = extract_info_full_summary(file_path, model_config=cfg)
+        full_summary_t2 = perf_counter()
         if summarize_full_result:
-            print(f"Extraction Complete for {file}")
+            print(f"Extraction Complete for {file} full summary")
             with open(f"{exp_dir}/full_summary/{file}.json", "w", encoding="utf-8") as f:
                 f.write(summarize_full_result.model_dump_json(indent=2))
         else:
             print(f"Failed to extract from {file} full summary")
-        
+        rag_t1 = perf_counter()
         rag_result = extract_isotope_process_info(f"./papers/{file}", model_config=cfg, logging=False)
+        rag_t2 = perf_counter()
         if rag_result:
-            print(f"RAG Extraction Complete for {file}")
+            print(f"RAG Extraction Complete for {file} with RAG")
             with open(f"{exp_dir}/rag_output/{file}.json", "w", encoding="utf-8") as f:
                 f.write(rag_result.model_dump_json(indent=2))
         else:
             print(f"Failed to extract from {file} with RAG")
+        print(f"Timing for {file}: Section Summary: {sections_t2 - sections_t1:.2f}s, Full Summary: {full_summary_t2 - full_summary_t1:.2f}s, RAG: {rag_t2 - rag_t1:.2f}s")
+        # save times to file for benchmarking
+        with open(f"{exp_dir}/timing.json", "a", encoding="utf-8") as f:
+            json.dump({
+                "file": file,
+                "section_summary_time": sections_t2 - sections_t1,
+                "full_summary_time": full_summary_t2 - full_summary_t1,
+                "rag_time": rag_t2 - rag_t1
+            }, f, indent=2)
     close_log_file(log_file)
     
 if __name__ == "__main__":

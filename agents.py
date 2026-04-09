@@ -1,5 +1,10 @@
 from typing import Any
 import json
+import re
+import time
+import random
+
+from openai import APIConnectionError, APITimeoutError, RateLimitError
 
 from langchain.agents.middleware import AgentMiddleware, AgentState
 from langchain_core.vectorstores import VectorStore
@@ -18,7 +23,55 @@ from langchain_huggingface import ChatHuggingFace
 
 from model_config import ModelConfig
 from models import IsotopeProcessFormat
-from document_loader import load_pdf_sections_structured
+
+# Per-section cap keeps requests well under provider limits; PDF text can be huge.
+_MAX_SUMMARY_SECTION_CHARS = 350_000
+
+
+def _sanitize_llm_text(text: Any, *, max_chars: int | None = _MAX_SUMMARY_SECTION_CHARS) -> str:
+    """Make text safe for JSON request bodies (OpenAI rejects malformed UTF-8 / surrogates)."""
+    s = text if isinstance(text, str) else str(text or "")
+    s = s.replace("\x00", "")
+    try:
+        s = s.encode("utf-16", "surrogatepass").decode("utf-16", "replace")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        s = s.encode("utf-8", errors="replace").decode("utf-8", errors="replace")
+    if max_chars is not None and len(s) > max_chars:
+        s = s[: max_chars - 40].rstrip() + "\n\n[... content truncated for API limits ...]"
+    return s
+
+
+def _retry_after_seconds_from_openai_message(exc: BaseException) -> float | None:
+    """Parse suggested wait from OpenAI error text, e.g. 'Please try again in 886ms'."""
+    msg = str(exc)
+    m = re.search(r"try again in ([\d.]+)\s*ms", msg, re.IGNORECASE)
+    if m:
+        return max(float(m.group(1)) / 1000.0, 0.0)
+    m = re.search(r"try again in ([\d.]+)\s*s(?:ec(?:ond)?s?)?\b", msg, re.IGNORECASE)
+    if m:
+        return max(float(m.group(1)), 0.0)
+    return None
+
+
+def _invoke_chat_respecting_rate_limits(model: Any, messages: list[Any], *, max_attempts: int = 12) -> Any:
+    """Retry chat completion on OpenAI TPM/RPM limits and transient network failures."""
+    for attempt in range(max_attempts):
+        try:
+            return model.invoke(messages)
+        except RateLimitError as e:
+            if attempt >= max_attempts - 1:
+                raise
+            wait = _retry_after_seconds_from_openai_message(e)
+            if wait is None:
+                wait = min(90.0, 1.5 * (2**attempt))
+            wait += random.uniform(0.0, 0.35)
+            time.sleep(wait)
+        except (APIConnectionError, APITimeoutError):
+            if attempt >= max_attempts - 1:
+                raise
+            wait = min(60.0, 2.0 * (2**attempt)) + random.uniform(0.0, 0.5)
+            time.sleep(wait)
+    raise RuntimeError("invoke retry loop exited without return or raise")
 
 # TODO: Add quantization support to experiment with larger models
 """
@@ -424,13 +477,9 @@ class SummarizerAgent:
             if not model_params:
                 model_params = {"max_new_tokens": 1024} if provider == "huggingface" else {"max_tokens": 2048}
 
-            model_obj = self._get_or_create_model(provider, model, model_params)
+            self._model = self._get_or_create_model(provider, model, model_params)
         else:
-            model_obj = model
-        self.agent = create_agent(
-            model_obj,
-            tools=[]
-        )
+            self._model = model
         
     def _cache_key(self, provider: str | None, model: str | None, model_params: dict[str, Any]) -> str:
         try:
@@ -452,22 +501,33 @@ class SummarizerAgent:
         return model_obj
 
     def summarize_full(self, sections: list[Document]) -> str:
-        context = "\n\n".join(doc.page_content for doc in sections)
+        # Sanitize extracted PDF text; no tools / no structured output — use the chat model directly
+        # to avoid LangGraph shaping the API request for a simple completion.
+        parts = [_sanitize_llm_text(doc.page_content) for doc in sections]
+        context = "\n\n".join(parts)
         prompt = f"Paper:\n\n{context}"
-        response = self.agent.invoke(
-            {"messages": [SystemMessage(content=SUMMARIZE_PAPER_PROMPT), HumanMessage(content=prompt)]}
+        response = _invoke_chat_respecting_rate_limits(
+            self._model,
+            [
+                SystemMessage(content=_sanitize_llm_text(SUMMARIZE_PAPER_PROMPT, max_chars=None)),
+                HumanMessage(content=prompt),
+            ],
         )
         return _agent_invoke_result_to_text(response)
     
     def summarize_sections(self, sections: list[Document]) -> str:
         summaries = []
+        system_content = _sanitize_llm_text(SUMMARIZE_SECTION_PROMPT, max_chars=None)
         for doc in sections:
-            prompt = f"Section ({doc.metadata.get('section', 'Unknown')}):\n\n{doc.page_content}"
-            response = self.agent.invoke(
-                {"messages": [SystemMessage(content=SUMMARIZE_SECTION_PROMPT), HumanMessage(content=prompt)]}
+            section_label = str(doc.metadata.get("section", "Unknown"))
+            body = _sanitize_llm_text(doc.page_content)
+            prompt = f"Section ({section_label}):\n\n{body}"
+            response = _invoke_chat_respecting_rate_limits(
+                self._model,
+                [SystemMessage(content=system_content), HumanMessage(content=prompt)],
             )
             summaries.append(
-                f"Summary of {doc.metadata.get('section', 'Unknown')}:\n{_agent_invoke_result_to_text(response)}"
+                f"Summary of {section_label}:\n{_agent_invoke_result_to_text(response)}"
             )
         return "\n\n".join(summaries)
 
