@@ -4,7 +4,7 @@ from document_loader import load_and_process_pdf, create_vector_store, extract_p
 from langchain_community.vectorstores import Chroma
 from langchain_openai.embeddings import OpenAIEmbeddings
 from langchain.messages import HumanMessage
-from agents import RAGPipeline, TARGET_MATERIAL_PROMPT, ACID_PROMPT, RESIN_PROMPT, ELUTION_PROMPT, FINAL_PRODUCT_PROMPT, SYSTEM_PROMPT, EXTRACT_ALL_PROMPT, SUMMARIZE_PAPER_PROMPT, SUMMARIZE_SECTION_PROMPT, SummarizerAgent, IsotopeProcessExtractionAgent
+from agents import RAGPipeline, TARGET_MATERIAL_PROMPT, ACID_PROMPT, RESIN_PROMPT, ELUTION_PROMPT, FINAL_PRODUCT_PROMPT, SYSTEM_PROMPT, EXTRACT_ALL_PROMPT, SUMMARIZE_PAPER_PROMPT, SUMMARIZE_SECTION_PROMPT, SummarizerAgent, IsotopeProcessExtractionAgent, release_model_registry
 from dotenv import load_dotenv
 from models import PaperMetadata, TargetMaterialList, AcidOrSolventList, ResinOrColumnList, ElutionConditionList, FinalProductList, IsotopeProcessFormat
 from huggingface_hub import login
@@ -23,6 +23,7 @@ from model_config import ModelConfig, load_model_config
 import yaml
 
 load_dotenv()
+DEFAULT_VRAM_SOFT_LIMIT_MB = int(os.environ.get("VRAM_SOFT_LIMIT_MB", "0") or "0")
 
 
 def _agent_response_to_json_serializable(obj):
@@ -64,6 +65,36 @@ def _to_yaml_serializable(obj):
     return str(obj)
 
 
+def _log_gpu_memory(label: str) -> None:
+    if not torch.cuda.is_available():
+        print(f"[gpu] {label}: cuda not available")
+        return
+    snapshots = []
+    for idx in range(torch.cuda.device_count()):
+        allocated = torch.cuda.memory_allocated(idx) / (1024 * 1024)
+        reserved = torch.cuda.memory_reserved(idx) / (1024 * 1024)
+        snapshots.append(f"gpu{idx}: alloc={allocated:.0f}MB reserved={reserved:.0f}MB")
+    print(f"[gpu] {label}: " + " | ".join(snapshots))
+
+
+def _check_vram_soft_limit(limit_mb: int, label: str) -> bool:
+    """Return True when memory is over soft limit."""
+    if limit_mb <= 0 or not torch.cuda.is_available():
+        return False
+    over_limit = False
+    for idx in range(torch.cuda.device_count()):
+        reserved = torch.cuda.memory_reserved(idx) / (1024 * 1024)
+        if reserved > limit_mb:
+            over_limit = True
+    if over_limit:
+        print(
+            f"[gpu] Soft limit exceeded after {label}: "
+            f"reserved memory over {limit_mb}MB. "
+            "Skipping non-essential phases to avoid OOM."
+        )
+    return over_limit
+
+
 hf_token = os.environ.get("HUGGINGFACEHUB_API_TOKEN", None)
 if hf_token:
     login(hf_token)
@@ -86,8 +117,10 @@ def extract_info_full_summary( file_path: str,
     model_config: ModelConfig | None = None,
     ) -> IsotopeProcessFormat:
     try:
+        _log_gpu_memory("before full summary pipeline")
         sections = load_and_process_pdf(file_path)
         summarizer = SummarizerAgent(model=model, provider=provider, config=model_config)
+        _log_gpu_memory("after summarizer init (full)")
         summaries = summarizer.summarize_full(sections)
         
         isotope_agent = IsotopeProcessExtractionAgent(model=model, provider=provider, config=model_config)
@@ -107,8 +140,10 @@ def extract_info_sections_summary(
     model_config: ModelConfig | None = None,
     ) -> IsotopeProcessFormat:
     try:
+        _log_gpu_memory("before section summary pipeline")
         sections = load_and_process_pdf(file_path)
         summarizer = SummarizerAgent(model=model, provider=provider, config=model_config)
+        _log_gpu_memory("after summarizer init (sections)")
         summaries = summarizer.summarize_sections(sections)
         
         isotope_agent = IsotopeProcessExtractionAgent(model=model, provider=provider, config=model_config)
@@ -130,10 +165,12 @@ def extract_isotope_process_info(
 ) -> IsotopeProcessFormat | None:
     try:
         print("Starting extraction process")
+        _log_gpu_memory("before rag pipeline")
         docs = load_and_process_pdf(file_path)
         embedding_model = OpenAIEmbeddings()
         vector_store = create_vector_store(docs, embedding_model, vectorstore_cls=Chroma, collection_name="isotope_docs")
         rag_pipeline = RAGPipeline(vector_store=vector_store)
+        _log_gpu_memory("after rag pipeline init")
         
         paper_metadata = PaperMetadata(**extract_paper_metadata(file_path))
         
@@ -149,6 +186,7 @@ def extract_isotope_process_info(
             target_agent = rag_pipeline.create_agent(
                 model=model, provider=provider, response_format=TargetMaterialList, config=model_config
             )
+            _log_gpu_memory("after target agent init")
             target_agent_response = target_agent.invoke({"messages": [HumanMessage(TARGET_MATERIAL_PROMPT)]})
             if logging:
                 print("logging target material response")
@@ -173,6 +211,7 @@ def extract_isotope_process_info(
             acid_agent = rag_pipeline.create_agent(
                 model=model, provider=provider, response_format=AcidOrSolventList, config=model_config
             )
+            _log_gpu_memory("after acid agent init")
             acid_agent_response = acid_agent.invoke({"messages": [HumanMessage(ACID_PROMPT)]})
             if logging:
                 with open(log_path, "a", encoding="utf-8") as log_file:
@@ -196,6 +235,7 @@ def extract_isotope_process_info(
             resin_agent = rag_pipeline.create_agent(
                 model=model, provider=provider, response_format=ResinOrColumnList, config=model_config
             )
+            _log_gpu_memory("after resin agent init")
             resin_agent_response = resin_agent.invoke({"messages": [HumanMessage(RESIN_PROMPT)]})
             if logging:
                 with open(log_path, "a", encoding="utf-8") as log_file:
@@ -218,6 +258,7 @@ def extract_isotope_process_info(
             elution_agent = rag_pipeline.create_agent(
                 model=model, provider=provider, response_format=ElutionConditionList, config=model_config
             )
+            _log_gpu_memory("after elution agent init")
             elution_agent_response = elution_agent.invoke({"messages": [HumanMessage(ELUTION_PROMPT)]})
             if logging:
                 with open(log_path, "a", encoding="utf-8") as log_file:
@@ -240,6 +281,7 @@ def extract_isotope_process_info(
             final_product_agent = rag_pipeline.create_agent(
                 model=model, provider=provider, response_format=FinalProductList, config=model_config
             )
+            _log_gpu_memory("after final-product agent init")
             final_product_agent_response = final_product_agent.invoke({"messages": [HumanMessage(FINAL_PRODUCT_PROMPT)]})
             if logging:
                 with open(log_path, "a", encoding="utf-8") as log_file:
@@ -387,8 +429,48 @@ def test_sections_and_full_summary(cfg: ModelConfig | None = None):
             print(f"Failed to extract from {file} full summary")
         break # just test one paper
     close_log_file(log_file)
+
+
+def test_section_summary_only(cfg: ModelConfig | None = None):
+    exp_dir = get_save_folder()
+    log_file = set_log_path(exp_dir)
+    os.mkdir(f"{exp_dir}/prompts")
+    os.mkdir(f"{exp_dir}/section_summaries")
+    with open(f"{exp_dir}/prompts/summarize_section.md", "w") as f:
+        f.write(SUMMARIZE_SECTION_PROMPT)
+    with open(f"{exp_dir}/config.yaml", "w") as f:
+        cfg_payload = _to_yaml_serializable(cfg) if cfg is not None else {}
+        yaml.safe_dump(cfg_payload, f, default_flow_style=False, sort_keys=False)
+    for file in os.listdir("./papers"):
+        print(f"Processing file: {file}")
+        summarize_sections_result = extract_info_sections_summary(f"./papers/{file}", model_config=cfg)
+        if summarize_sections_result:
+            with open(f"{exp_dir}/section_summaries/{file}.json", "w", encoding="utf-8") as f:
+                f.write(summarize_sections_result.model_dump_json(indent=2))
+        break
+    close_log_file(log_file)
+
+
+def test_full_summary_only(cfg: ModelConfig | None = None):
+    exp_dir = get_save_folder()
+    log_file = set_log_path(exp_dir)
+    os.mkdir(f"{exp_dir}/prompts")
+    os.mkdir(f"{exp_dir}/full_summary")
+    with open(f"{exp_dir}/prompts/summarize_paper.md", "w") as f:
+        f.write(SUMMARIZE_PAPER_PROMPT)
+    with open(f"{exp_dir}/config.yaml", "w") as f:
+        cfg_payload = _to_yaml_serializable(cfg) if cfg is not None else {}
+        yaml.safe_dump(cfg_payload, f, default_flow_style=False, sort_keys=False)
+    for file in os.listdir("./papers"):
+        print(f"Processing file: {file}")
+        summarize_full_result = extract_info_full_summary(f"./papers/{file}", model_config=cfg)
+        if summarize_full_result:
+            with open(f"{exp_dir}/full_summary/{file}.json", "w", encoding="utf-8") as f:
+                f.write(summarize_full_result.model_dump_json(indent=2))
+        break
+    close_log_file(log_file)
     
-def test_all(cfg: ModelConfig | None = None):
+def test_all(cfg: ModelConfig | None = None, vram_soft_limit_mb: int = DEFAULT_VRAM_SOFT_LIMIT_MB):
     exp_dir = get_save_folder()
     log_file = set_log_path(exp_dir)
     # save prompts to experiment folder
@@ -420,6 +502,7 @@ def test_all(cfg: ModelConfig | None = None):
     for file in os.listdir("./papers"):
         print(f"Processing file: {file}")
         file_path = f"./papers/{file}"
+        _log_gpu_memory("start file benchmark")
         sections_t1 = perf_counter()
         summarize_sections_result = extract_info_sections_summary(file_path, model_config=cfg)
         sections_t2 = perf_counter()
@@ -429,6 +512,14 @@ def test_all(cfg: ModelConfig | None = None):
                 f.write(summarize_sections_result.model_dump_json(indent=2))
         else:
             print(f"Failed to extract from {file} section summaries")
+        release_model_registry()
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        _log_gpu_memory("after section summary phase")
+        if _check_vram_soft_limit(vram_soft_limit_mb, "section summary phase"):
+            print(f"Skipping remaining phases for {file} due to VRAM soft limit.")
+            continue
         full_summary_t1 = perf_counter()
         summarize_full_result = extract_info_full_summary(file_path, model_config=cfg)
         full_summary_t2 = perf_counter()
@@ -438,6 +529,14 @@ def test_all(cfg: ModelConfig | None = None):
                 f.write(summarize_full_result.model_dump_json(indent=2))
         else:
             print(f"Failed to extract from {file} full summary")
+        release_model_registry()
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        _log_gpu_memory("after full summary phase")
+        if _check_vram_soft_limit(vram_soft_limit_mb, "full summary phase"):
+            print(f"Skipping RAG phase for {file} due to VRAM soft limit.")
+            continue
         rag_t1 = perf_counter()
         rag_result = extract_isotope_process_info(f"./papers/{file}", model_config=cfg, logging=False)
         rag_t2 = perf_counter()
@@ -457,6 +556,23 @@ def test_all(cfg: ModelConfig | None = None):
                 "rag_time": rag_t2 - rag_t1
             }, f, indent=2)
     close_log_file(log_file)
+
+
+def run_mode(mode: str, cfg: ModelConfig, vram_soft_limit_mb: int = DEFAULT_VRAM_SOFT_LIMIT_MB):
+    if mode == "rag":
+        main(cfg)
+        return
+    if mode == "section_summary":
+        test_section_summary_only(cfg)
+        return
+    if mode == "full_summary":
+        test_full_summary_only(cfg)
+        return
+    if mode == "all":
+        print("Warning: mode=all is high-memory; phases run sequentially with registry releases.")
+        test_all(cfg, vram_soft_limit_mb=vram_soft_limit_mb)
+        return
+    raise ValueError(f"Unknown mode: {mode}")
     
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -466,19 +582,28 @@ if __name__ == "__main__":
         default=None,
         help="Path to model config YAML (supports OpenAI and HuggingFace).",
     )
+    parser.add_argument(
+        "--mode",
+        type=str,
+        choices=("rag", "section_summary", "full_summary", "all"),
+        default="rag",
+        help="Run mode. Use 'all' only for full benchmark (high memory).",
+    )
+    parser.add_argument(
+        "--vram-soft-limit-mb",
+        type=int,
+        default=DEFAULT_VRAM_SOFT_LIMIT_MB,
+        help="Optional soft VRAM reserve limit. If exceeded in mode=all, later phases are skipped.",
+    )
     args = parser.parse_args()
     
     if args.config:
         cfg = load_model_config(args.config)
-        # main(cfg)
-        test_sections_and_full_summary(cfg)
+        run_mode(args.mode, cfg, vram_soft_limit_mb=args.vram_soft_limit_mb)
     else:
         for cfg in os.listdir("config"):
             if "30B" in cfg and "4bit" not in cfg: # skip QWEN 30B that is not quantized due to CUDA memory error.
                 continue
-            if "openai" in cfg.lower():
+            if "hf" in cfg.lower() or "openai" in cfg.lower():
                 cfg = load_model_config(f"config/{cfg}")
-                test_all(cfg)
-            # if "hf" in cfg:
-            #     cfg = load_model_config(f"config/{cfg}")
-            #     main(cfg)
+                run_mode(args.mode, cfg, vram_soft_limit_mb=args.vram_soft_limit_mb)

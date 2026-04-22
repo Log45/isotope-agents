@@ -3,6 +3,7 @@ import json
 import re
 import time
 import random
+import gc
 
 from openai import APIConnectionError, APITimeoutError, RateLimitError
 
@@ -26,6 +27,7 @@ from models import IsotopeProcessFormat
 
 # Per-section cap keeps requests well under provider limits; PDF text can be huge.
 _MAX_SUMMARY_SECTION_CHARS = 350_000
+_GLOBAL_MODEL_REGISTRY: dict[str, Any] = {}
 
 
 def _sanitize_llm_text(text: Any, *, max_chars: int | None = _MAX_SUMMARY_SECTION_CHARS) -> str:
@@ -337,26 +339,6 @@ class RAGPipeline:
     def __init__(self, vector_store: VectorStore):
         self.vector_store = vector_store
         self.retrieve_middleware = RetrieveDocumentsMiddleware(vector_store=self.vector_store)
-        self._model_cache: dict[str, Any] = {}
-
-    def _cache_key(self, provider: str | None, model: str | None, model_params: dict[str, Any]) -> str:
-        try:
-            params_key = json.dumps(model_params, sort_keys=True, default=str)
-        except Exception:
-            params_key = str(model_params)
-        return f"{provider}::{model}::{params_key}"
-
-    def _get_or_create_model(self, provider: str, model: str, model_params: dict[str, Any]):
-        key = self._cache_key(provider, model, model_params)
-        cached = self._model_cache.get(key)
-        if cached is not None:
-            return cached
-
-        model_obj = init_chat_model(model, model_provider=provider, **model_params)
-        if provider == "huggingface":
-            model_obj = HuggingFaceMessageNormalizer(inner=model_obj, model_name=model)
-        self._model_cache[key] = model_obj
-        return model_obj
 
     def create_agent(
         self,
@@ -381,7 +363,7 @@ class RAGPipeline:
             if not model_params:
                 model_params = {"max_new_tokens": 2048} if provider == "huggingface" else {"max_tokens": 2048}
 
-            model_obj = self._get_or_create_model(provider, model, model_params)
+            model_obj = _get_or_create_global_model(provider, model, model_params)
         else:
             model_obj = model
         return create_agent(
@@ -398,27 +380,7 @@ class IsotopeProcessExtractionAgent():
         provider: str | None = None,
         response_format: BaseModel = IsotopeProcessFormat,
         config: ModelConfig | None = None,):
-        self._model_cache: dict[str, Any] = {}
         self.agent = self.create_agent(model=model, provider=provider, response_format=response_format, config=config)
-        
-    def _cache_key(self, provider: str | None, model: str | None, model_params: dict[str, Any]) -> str:
-        try:
-            params_key = json.dumps(model_params, sort_keys=True, default=str)
-        except Exception:
-            params_key = str(model_params)
-        return f"{provider}::{model}::{params_key}"
-
-    def _get_or_create_model(self, provider: str, model: str, model_params: dict[str, Any]):
-        key = self._cache_key(provider, model, model_params)
-        cached = self._model_cache.get(key)
-        if cached is not None:
-            return cached
-
-        model_obj = init_chat_model(model, model_provider=provider, **model_params)
-        if provider == "huggingface":
-            model_obj = HuggingFaceMessageNormalizer(inner=model_obj, model_name=model)
-        self._model_cache[key] = model_obj
-        return model_obj
     
     def extract_from_summaries(self, summaries: str) -> IsotopeProcessFormat:
         # LangGraph-backed agents expect an input state dict, not a raw messages list.
@@ -448,7 +410,7 @@ class IsotopeProcessExtractionAgent():
             if not model_params:
                 model_params = {"max_new_tokens": 2048} if provider == "huggingface" else {"max_tokens": 2048}
 
-            model_obj = self._get_or_create_model(provider, model, model_params)
+            model_obj = _get_or_create_global_model(provider, model, model_params)
         else:
             model_obj = model
         return create_agent(
@@ -463,8 +425,6 @@ class SummarizerAgent:
         provider: str | None = None,
         response_format: BaseModel = None,
         config: ModelConfig | None = None,):
-        self._model_cache: dict[str, Any] = {}
-        
         if config is not None:
             provider = config.provider
             model = config.model
@@ -477,28 +437,9 @@ class SummarizerAgent:
             if not model_params:
                 model_params = {"max_new_tokens": 1024} if provider == "huggingface" else {"max_tokens": 2048}
 
-            self._model = self._get_or_create_model(provider, model, model_params)
+            self._model = _get_or_create_global_model(provider, model, model_params)
         else:
             self._model = model
-        
-    def _cache_key(self, provider: str | None, model: str | None, model_params: dict[str, Any]) -> str:
-        try:
-            params_key = json.dumps(model_params, sort_keys=True, default=str)
-        except Exception:
-            params_key = str(model_params)
-        return f"{provider}::{model}::{params_key}"
-
-    def _get_or_create_model(self, provider: str, model: str, model_params: dict[str, Any]):
-        key = self._cache_key(provider, model, model_params)
-        cached = self._model_cache.get(key)
-        if cached is not None:
-            return cached
-
-        model_obj = init_chat_model(model, model_provider=provider, **model_params)
-        if provider == "huggingface":
-            model_obj = HuggingFaceMessageNormalizer(inner=model_obj, model_name=model)
-        self._model_cache[key] = model_obj
-        return model_obj
 
     def summarize_full(self, sections: list[Document]) -> str:
         # Sanitize extracted PDF text; no tools / no structured output — use the chat model directly
@@ -549,3 +490,38 @@ def _agent_invoke_result_to_text(result: Any) -> str:
             if isinstance(v, str) and v.strip():
                 return v.strip()
     return str(result).strip()
+
+
+def _model_cache_key(provider: str | None, model: str | None, model_params: dict[str, Any]) -> str:
+    try:
+        params_key = json.dumps(model_params, sort_keys=True, default=str)
+    except Exception:
+        params_key = str(model_params)
+    return f"{provider}::{model}::{params_key}"
+
+
+def _get_or_create_global_model(provider: str, model: str, model_params: dict[str, Any]):
+    key = _model_cache_key(provider, model, model_params)
+    cached = _GLOBAL_MODEL_REGISTRY.get(key)
+    if cached is not None:
+        return cached
+
+    model_obj = init_chat_model(model, model_provider=provider, **model_params)
+    if provider == "huggingface":
+        model_obj = HuggingFaceMessageNormalizer(inner=model_obj, model_name=model)
+    _GLOBAL_MODEL_REGISTRY[key] = model_obj
+    return model_obj
+
+
+def release_model_registry():
+    """Release shared model registry references and clear CUDA cache."""
+    _GLOBAL_MODEL_REGISTRY.clear()
+    gc.collect()
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        # Keep this best-effort; release should not crash orchestration.
+        pass

@@ -1,15 +1,15 @@
 provider: huggingface
-model: Qwen/Qwen3-4B-Instruct-2507
+model: Qwen/Qwen3-30B-A3B-Instruct-2507
 params:
   backend: pipeline
   task: text-generation
-  device_map: cuda:0
+  device_map: auto
 
   # Generation
   max_new_tokens: 2048
   temperature: 0
 
-  # Model loading
+  # Model loading (multi-GPU)
   model_kwargs:
     torch_dtype: bfloat16
 

@@ -69,14 +69,30 @@ def normalize_model_params(provider: PROVIDER, params: dict[str, Any]) -> dict[s
         if isinstance(temp, (int, float)) and temp <= 0:
             params.pop("temperature", None)
             params.setdefault("do_sample", False)
+        if "do_sample" not in params:
+            params["do_sample"] = False
+        if params.get("do_sample") is False:
+            # Neutral values suppress warnings while preserving greedy decoding.
+            params.setdefault("temperature", 1.0)
+            params.setdefault("top_p", 1.0)
+            params.setdefault("top_k", 0)
+
+        # Prefer explicit low-memory defaults for local inference when absent.
+        params.setdefault("device_map", "cuda:0")
 
         # Common place to put HF model loading args is `model_kwargs`.
         model_kwargs = params.get("model_kwargs")
+        if not isinstance(model_kwargs, dict):
+            model_kwargs = {}
         if isinstance(model_kwargs, dict):
             # Coerce torch_dtype if provided as string.
             if "torch_dtype" in model_kwargs:
                 model_kwargs = dict(model_kwargs)
                 model_kwargs["torch_dtype"] = _coerce_torch_dtype(model_kwargs["torch_dtype"])
+            else:
+                model_kwargs = dict(model_kwargs)
+                # bf16 where supported provides the best memory/perf tradeoff.
+                model_kwargs["torch_dtype"] = _coerce_torch_dtype("bfloat16")
             model_kwargs = _materialize_hf_quantization_config(model_kwargs)
             params["model_kwargs"] = model_kwargs
 

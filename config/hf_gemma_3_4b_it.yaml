@@ -10,8 +10,9 @@ params:
   temperature: 0
 
   # Pipeline/model construction kwargs
-  device_map: auto
-  model_kwargs: {}
+  device_map: cuda:0
+  model_kwargs:
+    torch_dtype: bfloat16
     # torch_dtype: bfloat16
     # Example 4-bit quantization via bitsandbytes
     # quantization_config:

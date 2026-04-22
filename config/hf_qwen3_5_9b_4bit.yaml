@@ -3,7 +3,7 @@ model: Qwen/Qwen3.5-9B
 params:
   backend: pipeline
   task: text-generation
-  device_map: auto
+  device_map: cuda:0
 
   # Generation
   max_new_tokens: 2048
