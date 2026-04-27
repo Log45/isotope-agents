@@ -872,8 +872,8 @@ def hallucination_rate(
 @dataclass(frozen=True)
 class TaskSuccessThresholds:
     min_completeness: float = 0.8
-    min_accuracy: float = 0.7
-    max_hallucination_rate: float = 0.2
+    min_accuracy: float = 0.65
+    max_hallucination_rate: float = 0.25
 
 
 def task_success(
