@@ -1,0 +1,6 @@
+Poster analysis scope
+---------------------
+Included experiments: exp18, exp19, exp20, exp24, exp25
+Excluded experiments: exp21, exp22, exp23 (near-total empty outputs across methods)
+Included rows: items_total > 0
+Total rows included: 43
