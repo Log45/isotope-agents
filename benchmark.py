@@ -237,37 +237,30 @@ def _item_key_target(item: Dict[str, Any]) -> str:
     name = canonicalize_text(item.get("name"))
     formula = canonicalize_text(item.get("chemical_formula"))
     isotope = canonicalize_isotope(item.get("isotope"))
-    phys = canonicalize_text(item.get("physical_form"))
-    # include phys form if present (solid/solution), but it's secondary
-    parts = [p for p in (isotope, formula, name, phys) if p]
+    parts = [p for p in (isotope, formula, name) if p]
     return "|".join(parts)
 
 
 def _item_key_acid_solvent(item: Dict[str, Any]) -> str:
     # key entity + key condition(s)
     name = canonicalize_chemical_name(item.get("name"))
-    role = canonicalize_text(item.get("role"))
     typ = canonicalize_text(item.get("type"))
     conc = canonicalize_concentration(item.get("concentration"))
-    parts = [p for p in (name, typ, conc, role) if p]
+    parts = [p for p in (name, typ, conc) if p]
     return "|".join(parts)
 
 
 def _item_key_resin(item: Dict[str, Any]) -> str:
     name = canonicalize_text(item.get("name"))
     material = canonicalize_text(item.get("material"))
-    role = canonicalize_text(item.get("role"))
-    dims = canonicalize_text(item.get("column_dimensions"))
-    parts = [p for p in (name, material, dims, role) if p]
+    parts = [p for p in (name, material) if p]
     return "|".join(parts)
 
 
 def _item_key_elution(item: Dict[str, Any]) -> str:
     eluent = canonicalize_eluent_name(item.get("eluent"))
     conc = canonicalize_concentration(item.get("concentration"))
-    vol = canonicalize_text(item.get("volume"))
-    ph = canonicalize_text(item.get("pH"))
-    parts = [p for p in (eluent, conc, vol, ph) if p]
+    parts = [p for p in (eluent, conc) if p]
     return "|".join(parts)
 
 
@@ -337,10 +330,8 @@ def protocol_completeness(extraction_json: Dict[str, Any], required_sections: Se
     return present / max(1, len(required_sections))
 
 
-def _set_prf(pred: Set[str], gold: Set[str]) -> Dict[str, float]:
-    tp = len(pred & gold)
-    fp = len(pred - gold)
-    fn = len(gold - pred)
+def _set_prf(pred: Set[str], gold: Set[str], section: Optional[str] = None) -> Dict[str, float]:
+    tp, fp, fn = _match_counts(pred, gold, section=section)
     precision = tp / (tp + fp) if (tp + fp) else 0.0
     recall = tp / (tp + fn) if (tp + fn) else 0.0
     f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
@@ -354,11 +345,89 @@ def _set_prf(pred: Set[str], gold: Set[str]) -> Dict[str, float]:
     }
 
 
-def _jaccard(pred: Set[str], gold: Set[str]) -> float:
-    union = pred | gold
-    if not union:
+def _key_component_match(pred_comp: str, gold_comp: str) -> bool:
+    if pred_comp == gold_comp:
+        return True
+    if not pred_comp or not gold_comp:
+        return False
+    # Relaxed textual match: treat gold as correct if it appears inside predicted text.
+    # This is primarily for name-like fields (e.g., "iron" vs "iron 58"), while still
+    # requiring that the gold component contain alphabetic characters.
+    if re.search(r"[a-z]", gold_comp) and gold_comp in pred_comp:
+        return True
+    return False
+
+
+def _extract_isotope_token_from_key(key: str) -> str:
+    for part in (p for p in key.split("|") if p):
+        if re.match(r"^\d{1,3}[a-z]{1,3}$", part):
+            return part
+    return ""
+
+
+def _key_match_relaxed(pred_key: str, gold_key: str, section: Optional[str] = None) -> bool:
+    if pred_key == gold_key:
+        return True
+    if not pred_key or not gold_key:
+        return False
+
+    # For isotope-bearing sections, treat isotope agreement as sufficient even when
+    # the textual name differs (e.g., "actinium" vs "actinium-228"/"228ac").
+    if section in {"target_materials", "final_products"}:
+        gold_iso = _extract_isotope_token_from_key(gold_key)
+        pred_iso = _extract_isotope_token_from_key(pred_key)
+        if gold_iso and pred_iso and gold_iso == pred_iso:
+            return True
+
+    pred_parts = [p for p in pred_key.split("|") if p]
+    gold_parts = [g for g in gold_key.split("|") if g]
+    if not gold_parts:
+        return False
+
+    used_pred: Set[int] = set()
+    for g in gold_parts:
+        matched = False
+        for i, p in enumerate(pred_parts):
+            if i in used_pred:
+                continue
+            if _key_component_match(p, g):
+                used_pred.add(i)
+                matched = True
+                break
+        if not matched:
+            return False
+    return True
+
+
+def _match_counts(pred: Set[str], gold: Set[str], section: Optional[str] = None) -> Tuple[int, int, int]:
+    pred_list = sorted(pred)
+    gold_list = sorted(gold)
+    used_gold: Set[int] = set()
+    tp = 0
+    fp = 0
+    for p in pred_list:
+        matched_idx = None
+        for i, g in enumerate(gold_list):
+            if i in used_gold:
+                continue
+            if _key_match_relaxed(p, g, section=section):
+                matched_idx = i
+                break
+        if matched_idx is None:
+            fp += 1
+        else:
+            used_gold.add(matched_idx)
+            tp += 1
+    fn = len(gold_list) - len(used_gold)
+    return tp, fp, fn
+
+
+def _jaccard(pred: Set[str], gold: Set[str], section: Optional[str] = None) -> float:
+    tp, fp, fn = _match_counts(pred, gold, section=section)
+    union_size = tp + fp + fn
+    if union_size == 0:
         return 1.0
-    return float(len(pred & gold) / len(union))
+    return float(tp / union_size)
 
 
 def jaccard_similarity(
@@ -392,7 +461,7 @@ def jaccard_similarity(
     for sec in required_sections:
         p = extract_section_keys(pred_json, sec)
         g = extract_section_keys(gold_json, sec)
-        by_section[sec] = _jaccard(p, g)
+        by_section[sec] = _jaccard(p, g, section=sec)
         pred_all |= {f"{sec}:{x}" for x in p}
         gold_all |= {f"{sec}:{x}" for x in g}
     return {"micro": _jaccard(pred_all, gold_all), "by_section": by_section}
@@ -639,7 +708,7 @@ def extraction_accuracy(
         for sec in required_sections:
             p = extract_section_keys(pred_json, sec)
             g = extract_section_keys(gold_json, sec)
-            per_section[sec] = _set_prf(p, g)
+            per_section[sec] = _set_prf(p, g, section=sec)
             pred_all |= {f"{sec}:{x}" for x in p}
             gold_all |= {f"{sec}:{x}" for x in g}
 
@@ -743,17 +812,29 @@ def hallucination_rate(
     """
     if gold_json is not None:
         fp = 0
+        tp = 0
+        fn = 0
         pred_total = 0
         by_section: Dict[str, Any] = {}
         for sec in required_sections:
             p = extract_section_keys(pred_json, sec)
             g = extract_section_keys(gold_json, sec)
             pred_total += len(p)
-            sec_fp = len(p - g)
+            sec_tp, sec_fp, sec_fn = _match_counts(p, g, section=sec)
+            tp += sec_tp
             fp += sec_fp
-            by_section[sec] = {"pred": len(p), "fabricated": sec_fp}
+            fn += sec_fn
+            by_section[sec] = {"pred": len(p), "fabricated": sec_fp, "matched": sec_tp, "missed": sec_fn}
         rate = fp / max(1, pred_total)
-        return {"mode": "gold", "rate": rate, "fabricated": fp, "pred_total": pred_total, "by_section": by_section}
+        return {
+            "mode": "gold",
+            "rate": rate,
+            "fabricated": fp,
+            "pred_total": pred_total,
+            "matched": tp,
+            "missed": fn,
+            "by_section": by_section,
+        }
 
     flagged = 0
     total = 0

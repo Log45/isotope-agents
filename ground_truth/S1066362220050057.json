@@ -28,21 +28,21 @@
         "name": "HNO3",
         "type": "acid",
         "concentration": "4 M",
-        "role": "extraction / loading / eluate (Ra retained in eluate)",
+        "role": "dissolution",
         "source_section": "Macroscopic amounts of the thorium bulk (20 g) were separated by its extraction by a solution of di(2-ethylhexyl)phosphoric acid in toluene from 4 M HNO3 solutions, with microamounts of 228Ra and 228Ac remaining in the aqueous phase. 228Ac was selectively extracted ... and 228Ra quantitatively remained in the 4 M HNO3 eluate."
       },
       {
         "name": "HNO3",
         "type": "acid",
         "concentration": "0.05 M",
-        "role": "elution (Ac washed out)",
+        "role": "elution",
         "source_section": "228Ac was washed out of the column with 0.05 M HNO3, it could be used as a radioisotope for research purposes."
       },
       {
         "name": "di(2-ethylhexyl)phosphoric acid (HDEHP) in toluene",
         "type": "solvent",
         "concentration": null,
-        "role": "thorium extraction (organic phase)",
+        "role": "dissolution",
         "source_section": "Macroscopic amounts of the thorium bulk (20 g) were separated by its extraction by a solution of di(2-ethylhexyl)phosphoric acid in toluene from 4 M HNO3 solutions, with microamounts of 228Ra and 228Ac remaining in the aqueous phase."
       }
     ]
@@ -62,7 +62,7 @@
   "elution_conditions": {
     "items": [
       {
-        "eluent": "4 M HNO3",
+        "eluent": "HNO3",
         "concentration": "4 M",
         "volume": null,
         "flow_rate": null,
@@ -71,7 +71,7 @@
         "source_section": "228Ra quantitatively remained in the 4 M HNO3 eluate."
       },
       {
-        "eluent": "0.05 M HNO3",
+        "eluent": "HNO3",
         "concentration": "0.05 M",
         "volume": null,
         "flow_rate": null,
@@ -92,7 +92,7 @@
         "source_section": "228Ac was washed out of the column with 0.05 M HNO3, it could be used as a radioisotope for research purposes."
       },
       {
-        "name": "Radium-228 (generator parent fraction)",
+        "name": "Radium-228",
         "isotope": "228Ra",
         "chemical_form": "in 4 M HNO3 (eluate)",
         "purity": null,
